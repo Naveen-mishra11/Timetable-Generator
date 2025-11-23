@@ -1,35 +1,52 @@
 const express = require("express");
 const { generateTimetable } = require("../controllers/timetableController");
 const authMiddleware = require("../middleware/authMiddleware");
-const Timetable = require("../models/Timetable"); //  Import model
+const Timetable = require("../models/Timetable");
 
 const router = express.Router();
 
+// GENERATE TIMETABLE
 router.post("/generate", authMiddleware, generateTimetable);
 
+// SAVE TIMETABLE
 router.post("/save", authMiddleware, async (req, res) => {
   try {
-    const { className, schedule } = req.body;
+    const { className, schedule, lunchAfter, periodsPerDay } = req.body;
 
     if (!className || !schedule) {
       return res.status(400).json({ error: "className and schedule required" });
     }
 
-    // Try to find existing timetable for the class
     let timetable = await Timetable.findOne({ className });
 
     if (timetable) {
-      // Update existing timetable
+      // ⭐ Update existing timetable
       timetable.schedule = schedule;
+
+      if (lunchAfter !== undefined) timetable.lunchAfter = lunchAfter;
+      if (periodsPerDay !== undefined) timetable.periodsPerDay = periodsPerDay;
+
       await timetable.save();
-      return res.json({ message: "Timetable updated successfully", timetable });
+
+      return res.json({
+        message: "Timetable updated successfully",
+        timetable,
+      });
     } else {
-      // Create new timetable
-      timetable = new Timetable({ className, schedule });
+      // ⭐ Create new timetable with new fields
+      timetable = new Timetable({
+        className,
+        schedule,
+        lunchAfter: lunchAfter ?? 3,
+        periodsPerDay: periodsPerDay ?? 7,
+      });
+
       await timetable.save();
-      return res
-        .status(201)
-        .json({ message: "Timetable saved successfully", timetable });
+
+      return res.status(201).json({
+        message: "Timetable saved successfully",
+        timetable,
+      });
     }
   } catch (err) {
     console.error("Error saving timetable:", err);
@@ -37,12 +54,13 @@ router.post("/save", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Get all timetables
+// GET ALL TIMETABLES
 router.get("/all", authMiddleware, async (req, res) => {
   try {
     const timetables = await Timetable.find()
       .populate("schedule.subject")
       .populate("schedule.teacher");
+
     res.json(timetables);
   } catch (err) {
     console.error(err);
@@ -50,7 +68,7 @@ router.get("/all", authMiddleware, async (req, res) => {
   }
 });
 
-// Delete all timetables
+// DELETE ALL
 router.delete("/delete-all", authMiddleware, async (req, res) => {
   try {
     await Timetable.deleteMany({});

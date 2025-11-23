@@ -4,7 +4,7 @@ import axios from "axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable"; // ✅ Correct import
+import autoTable from "jspdf-autotable";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
@@ -12,63 +12,70 @@ const daysOptions = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const GenerateTimetable = () => {
   const navigate = useNavigate();
+
   const [days, setDays] = useState([...daysOptions]);
   const [periodsPerDay, setPeriodsPerDay] = useState(7);
+  const [lunchAfter, setLunchAfter] = useState(3);
   const [timetable, setTimetable] = useState(null);
   const [message, setMessage] = useState("");
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
 
-  // Check login + fetch subjects & teachers
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       navigate("/login");
-    } else {
-      fetchSubjects();
-      fetchTeachers();
+      return;
     }
+    fetchSubjects(token);
+    fetchTeachers(token);
   }, [navigate]);
 
-  const fetchSubjects = async () => {
+  const fetchSubjects = async (token) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/subjects`);
+      const res = await axios.get(`${SERVER_URL}/api/subjects`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setSubjects(res.data);
     } catch (err) {
       console.error("Error fetching subjects:", err);
     }
   };
 
-  const fetchTeachers = async () => {
+  const fetchTeachers = async (token) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/teachers`);
+      const res = await axios.get(`${SERVER_URL}/api/teachers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setTeachers(res.data);
     } catch (err) {
       console.error("Error fetching teachers:", err);
     }
   };
 
-  // Generate timetable
   const handleGenerate = async (e) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        setMessage("Please login to generate timetable");
         navigate("/login");
         return;
       }
 
       const res = await axios.post(
         `${SERVER_URL}/api/timetable/generate`,
-        { days, periodsPerDay },
+        {
+          days,
+          periodsPerDay,
+          lunchAfter, // ⭐ Include lunch
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setTimetable(res.data);
       setMessage("Timetable generated successfully!");
     } catch (err) {
-      console.error(err);
+      console.error("Generate Error:", err);
       setMessage(
         "Error generating timetable: " +
           (err.response?.data?.error || err.message)
@@ -76,12 +83,10 @@ const GenerateTimetable = () => {
     }
   };
 
-  // ✅ Save ALL timetables at once
   const handleSaveAll = async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        setMessage("Please login to save timetable");
         navigate("/login");
         return;
       }
@@ -106,22 +111,26 @@ const GenerateTimetable = () => {
 
         await axios.post(
           `${SERVER_URL}/api/timetable/save`,
-          { className, schedule },
+          {
+            className,
+            schedule,
+            lunchAfter, // ⭐ Save lunch position
+            periodsPerDay, // ⭐ Save periods count
+          },
           { headers: { Authorization: `Bearer ${token}` } }
         );
       }
 
-      setMessage("✅ All timetables saved successfully!");
+      alert("All timetables saved successfully");
     } catch (err) {
-      console.error(err);
-      setMessage(
+      console.error("Save Error:", err);
+      alert(
         "Error saving timetable: " +
           (err.response?.data?.error || err.message)
       );
     }
   };
 
-  // ✅ Export ALL timetables as PDF
   const handleExportPDF = () => {
     if (!timetable) {
       setMessage("No timetable to export");
@@ -137,31 +146,44 @@ const GenerateTimetable = () => {
       doc.text(`Class: ${className}`, 14, 20);
 
       const times = [...new Set(timetable[className].map((slot) => slot.time))];
+
+      // Insert lunch
+      const modifiedTimes = [...times];
+      modifiedTimes.splice(lunchAfter, 0, "LUNCH BREAK");
+
       const daysList = [
         ...new Set(timetable[className].map((slot) => slot.day)),
       ];
 
       const body = daysList.map((day) => {
         const row = [day];
-        times.forEach((time) => {
+
+        modifiedTimes.forEach((time) => {
+          if (time === "LUNCH BREAK") {
+            row.push("LUNCH BREAK");
+            return;
+          }
+
           const slot = timetable[className].find(
             (s) => s.day === day && s.time === time
           );
-          if (slot) {
-            row.push(
-              `${slot.subject || ""}\n${slot.teacher || ""}\n${slot.room || ""}`
-            );
-          } else {
-            row.push("-");
-          }
+
+          row.push(
+            slot
+              ? `${slot.subject || ""}\n${slot.teacher || ""}\n${
+                  slot.room || ""
+                }`
+              : "-"
+          );
         });
+
         return row;
       });
 
       autoTable(doc, {
         startY: 30,
-        head: [["DAY / TIME", ...times]],
-        body: body,
+        head: [["DAY / TIME", ...modifiedTimes]],
+        body,
         theme: "grid",
         styles: { fontSize: 10, cellPadding: 2 },
         headStyles: { fillColor: [41, 128, 185] },
@@ -180,7 +202,6 @@ const GenerateTimetable = () => {
 
           {message && <div className="alert alert-info">{message}</div>}
 
-          {/* Form Section */}
           <form
             onSubmit={handleGenerate}
             className="card p-4 shadow bg-light mb-4"
@@ -198,6 +219,23 @@ const GenerateTimetable = () => {
             </div>
 
             <div className="mb-3">
+              <label className="form-label">
+                Lunch Break After Which Period?
+              </label>
+              <select
+                className="form-select"
+                value={lunchAfter}
+                onChange={(e) => setLunchAfter(parseInt(e.target.value))}
+              >
+                {Array.from({ length: periodsPerDay }, (_, period) => (
+                  <option key={period} value={period}>
+                    After Period {period}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-3">
               <label className="form-label">Select Days</label>
               <div className="d-flex flex-wrap gap-2">
                 {daysOptions.map((day) => (
@@ -205,8 +243,6 @@ const GenerateTimetable = () => {
                     <input
                       className="form-check-input"
                       type="checkbox"
-                      id={day}
-                      value={day}
                       checked={days.includes(day)}
                       onChange={(e) => {
                         const checked = e.target.checked;
@@ -217,9 +253,7 @@ const GenerateTimetable = () => {
                         );
                       }}
                     />
-                    <label className="form-check-label" htmlFor={day}>
-                      {day}
-                    </label>
+                    <label className="form-check-label">{day}</label>
                   </div>
                 ))}
               </div>
@@ -230,12 +264,15 @@ const GenerateTimetable = () => {
             </button>
           </form>
 
-          {/* Timetable Section */}
           {timetable &&
             Object.keys(timetable).map((className) => {
               const times = [
                 ...new Set(timetable[className].map((slot) => slot.time)),
               ];
+
+              const modifiedTimes = [...times];
+              modifiedTimes.splice(lunchAfter, 0, "LUNCH");
+
               const daysList = [
                 ...new Set(timetable[className].map((slot) => slot.day)),
               ];
@@ -247,32 +284,39 @@ const GenerateTimetable = () => {
                     <thead className="table-primary">
                       <tr>
                         <th>DAY / TIME</th>
-                        {times.map((time) => (
-                          <th key={time}>{time}</th>
+                        {modifiedTimes.map((time, idx) => (
+                          <th key={idx}>{time}</th>
                         ))}
                       </tr>
                     </thead>
+
                     <tbody>
                       {daysList.map((day) => (
                         <tr key={day}>
                           <td className="fw-bold">{day}</td>
-                          {times.map((time) => {
+
+                          {modifiedTimes.map((time) => {
+                            if (time === "LUNCH") {
+                              return (
+                                <td key={time} className="fw-bold">
+                                  LUNCH
+                                </td>
+                              );
+                            }
+
                             const slot = timetable[className].find(
                               (s) => s.day === day && s.time === time
                             );
+
                             return (
                               <td key={time}>
                                 {slot ? (
                                   <>
                                     <div>{slot.subject}</div>
-                                    {slot.teacher && (
-                                      <div className="text-muted small">
-                                        ({slot.teacher})
-                                      </div>
-                                    )}
-                                    {slot.room && (
-                                      <div className="small">{slot.room}</div>
-                                    )}
+                                    <div className="small text-muted">
+                                      {slot.teacher}
+                                    </div>
+                                    <div className="small">{slot.room}</div>
                                   </>
                                 ) : (
                                   "-"
@@ -288,7 +332,6 @@ const GenerateTimetable = () => {
               );
             })}
 
-          {/* ✅ Single Button at the bottom */}
           {timetable && (
             <div className="d-flex gap-3 mt-3">
               <button className="btn btn-success" onClick={handleSaveAll}>

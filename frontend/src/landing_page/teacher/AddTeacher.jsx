@@ -6,12 +6,13 @@ const serverUrl = import.meta.env.VITE_SERVER_URL;
 
 const AddTeacher = () => {
   const [name, setName] = useState("");
-  const [subject, setSubject] = useState("");
+  const [selectedSubjects, setSelectedSubjects] = useState([]);
+  const [teachingType, setTeachingType] = useState([]);
   const [maxConsecutive, setMaxConsecutive] = useState(2);
   const [subjects, setSubjects] = useState([]);
   const [message, setMessage] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Fetch subjects for dropdown
   useEffect(() => {
     fetchSubjects();
   }, []);
@@ -25,18 +26,41 @@ const AddTeacher = () => {
     }
   };
 
+  const toggleSubject = (id) => {
+    setSelectedSubjects((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  };
+
+  const handleTeachingTypeChange = (type) => {
+    setTeachingType((prev) =>
+      prev.includes(type)
+        ? prev.filter((t) => t !== type)
+        : [...prev, type]
+    );
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
       await axios.post(
         `${serverUrl}/api/teachers`,
-        { name, subject, maxConsecutive },
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          name,
+          subjects: selectedSubjects,
+          teachingType,
+          maxConsecutive,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
-      setMessage("Teacher added successfully!");
+
+      setMessage("✅ Teacher added successfully!");
       setName("");
-      setSubject("");
+      setSelectedSubjects([]);
+      setTeachingType([]);
       setMaxConsecutive(2);
     } catch (err) {
       setMessage(err.response?.data?.error || "Failed to add teacher");
@@ -64,32 +88,90 @@ const AddTeacher = () => {
               />
             </div>
 
-            {/* Subject Dropdown */}
-            <div className="mb-3">
-              <label className="form-label">Subject</label>
-              <select
-                className="form-select"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                required
+            {/* Custom Multi-Select for Subjects */}
+            <div className="mb-3 position-relative">
+              <label className="form-label">Select Subjects</label>
+              <div
+                className="form-control d-flex justify-content-between align-items-center"
+                style={{ cursor: "pointer" }}
+                onClick={() => setDropdownOpen(!dropdownOpen)}
               >
-                <option value="">-- Select Subject --</option>
-                {subjects.map((subj) => (
-                  <option key={subj._id} value={subj._id}>
-                    {subj.name} ({subj.code})
-                  </option>
-                ))}
-              </select>
+                {selectedSubjects.length > 0
+                  ? `${selectedSubjects.length} subject(s) selected`
+                  : "Select subjects"}
+                <i
+                  className={`bi bi-chevron-${dropdownOpen ? "up" : "down"}`}
+                ></i>
+              </div>
+
+              {dropdownOpen && (
+                <div
+                  className="border rounded mt-1 p-2 bg-white shadow-sm position-absolute w-100"
+                  style={{ zIndex: 10, maxHeight: "200px", overflowY: "auto" }}
+                >
+                  {subjects.map((subj) => (
+                    <div
+                      key={subj._id}
+                      className="form-check"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id={subj._id}
+                        checked={selectedSubjects.includes(subj._id)}
+                        onChange={() => toggleSubject(subj._id)}
+                      />
+                      <label
+                        htmlFor={subj._id}
+                        className="form-check-label"
+                      >
+                        {subj.name} ({subj.code})
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Max Consecutive */}
+            {/* Teaching Type (Theory / Lab) */}
+            <div className="mb-3">
+              <label className="form-label d-block">Teaching Type</label>
+              <div className="form-check form-check-inline">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  id="theory"
+                  checked={teachingType.includes("theory")}
+                  onChange={() => handleTeachingTypeChange("theory")}
+                />
+                <label htmlFor="theory" className="form-check-label">
+                  Theory
+                </label>
+              </div>
+
+              <div className="form-check form-check-inline">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  id="lab"
+                  checked={teachingType.includes("lab")}
+                  onChange={() => handleTeachingTypeChange("lab")}
+                />
+                <label htmlFor="lab" className="form-check-label">
+                  Lab
+                </label>
+              </div>
+            </div>
+
+            {/* Max Consecutive Classes */}
             <div className="mb-3">
               <label className="form-label">Max Consecutive Classes</label>
               <input
                 type="number"
                 className="form-control"
                 value={maxConsecutive}
-                onChange={(e) => setMaxConsecutive(e.target.value)}
+                onChange={(e) => setMaxConsecutive(Number(e.target.value))}
                 min="1"
               />
             </div>

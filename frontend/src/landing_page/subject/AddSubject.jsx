@@ -9,6 +9,7 @@ const AddSubject = () => {
     name: "",
     code: "",
     hoursPerWeek: 4,
+    type: "theory", // default subject type
   });
 
   const [message, setMessage] = useState("");
@@ -24,20 +25,15 @@ const AddSubject = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Replace with your backend API
-      const token = localStorage.getItem("token"); // if protected
-      const res = await axios.post(
-        `${serverUrl}/api/subjects`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`${serverUrl}/api/subjects`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       setMessage(res.data.message || "Subject added successfully!");
-      setFormData({ name: "", code: "", hoursPerWeek: 4 });
+      setFormData({ name: "", code: "", hoursPerWeek: 4, type: "theory" });
     } catch (err) {
       setMessage(err.response?.data?.error || "Something went wrong!");
     }
@@ -100,6 +96,24 @@ const AddSubject = () => {
                   max={10}
                   required
                 />
+              </div>
+
+              {/* Subject Type */}
+              <div className="mb-3">
+                <label htmlFor="type" className="form-label">
+                  Subject Type
+                </label>
+                <select
+                  className="form-select"
+                  id="type"
+                  name="type"
+                  value={formData.type}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="theory">Theory</option>
+                  <option value="lab">Lab</option>
+                </select>
               </div>
 
               <button type="submit" className="btn btn-primary w-100">

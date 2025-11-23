@@ -16,7 +16,10 @@ router.post("/", async (req, res) => {
 // Get all teachers (with subject populated)
 router.get("/", async (req, res) => {
   try {
-    const teachers = await Teacher.find().populate("subject");
+    const teachers = await Teacher.find()
+      .populate("subjects", "name code type") // populate name, code, and type (theory/lab)
+      .lean();
+
     res.json(teachers);
   } catch (err) {
     res.status(500).json({ error: err.message });

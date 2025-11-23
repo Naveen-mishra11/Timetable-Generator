@@ -10,7 +10,11 @@ const timetableSchema = new mongoose.Schema({
       teacher: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher" },
       room: String
     }
-  ]
+  ],
+
+  lunchAfter: { type: Number, default: 3 },
+  periodsPerDay: { type: Number, default: 7 },
+  
 });
 
 module.exports = mongoose.model("Timetable", timetableSchema);

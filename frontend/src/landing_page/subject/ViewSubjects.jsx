@@ -52,6 +52,7 @@ const ViewSubjects = () => {
                 <tr>
                   <th>Name</th>
                   <th>Code</th>
+                  <th>Type</th>
                   <th>Hours/Week</th>
                   <th>Actions</th>
                 </tr>
@@ -61,6 +62,9 @@ const ViewSubjects = () => {
                   <tr key={subject._id}>
                     <td>{subject.name}</td>
                     <td>{subject.code}</td>
+                    <td className="text-capitalize">
+                      {subject.type}
+                    </td>
                     <td>{subject.hoursPerWeek}</td>
                     <td>
                       <button
