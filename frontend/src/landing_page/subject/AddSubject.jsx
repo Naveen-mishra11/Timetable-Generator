@@ -25,7 +25,7 @@ const AddSubject = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       const res = await axios.post(`${serverUrl}/api/subjects`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,

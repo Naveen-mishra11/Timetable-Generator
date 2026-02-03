@@ -17,7 +17,7 @@ const ViewTimetables = () => {
   const fetchTimetables = async () => {
     try {
       const res = await axios.get(`${SERVER_URL}/api/timetable/all`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
 
       setTimetables(res.data);
@@ -31,7 +31,7 @@ const ViewTimetables = () => {
 
     try {
       await axios.delete(`${SERVER_URL}/api/timetable/delete-all`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
 
       setTimetables([]);
@@ -41,51 +41,43 @@ const ViewTimetables = () => {
     }
   };
 
-  // ⭐ PDF EXPORT UPDATED – Free Period shows & lunchAfter per class
   const handleExportPDF = () => {
-    if (timetables.length === 0) return;
+    if (!timetables.length) return;
 
     const doc = new jsPDF();
 
-    timetables.forEach((timetable, index) => {
+    timetables.forEach((tt, index) => {
       if (index !== 0) doc.addPage();
 
-      const lunchAfter = timetable.lunchAfter ?? 3;
-
       doc.setFontSize(16);
-      doc.text(`Class: ${timetable.className}`, 14, 20);
+      doc.text(`Class: ${tt.className}`, 14, 20);
 
-      const times = [...new Set(timetable.schedule.map((s) => s.time))];
-
+      const times = [...new Set(tt.schedule.map((s) => s.time))];
       const modifiedTimes = [...times];
-      modifiedTimes.splice(lunchAfter, 0, "LUNCH");
+      modifiedTimes.splice(tt.lunchAfter ?? 3, 0, "LUNCH");
 
-      const daysList = [...new Set(timetable.schedule.map((s) => s.day))];
+      const daysList = [...new Set(tt.schedule.map((s) => s.day))];
 
       const body = daysList.map((day) => {
         const row = [day];
-
         modifiedTimes.forEach((time) => {
           if (time === "LUNCH") {
             row.push("LUNCH BREAK");
             return;
           }
 
-          const slot = timetable.schedule.find(
-            (s) => s.day === day && s.time === time
-          );
-
-          // ⭐ FIX: Free periods now show properly
-          if (!slot)
-            return row.push("Free Period");
+          const slot = tt.schedule.find((s) => s.day === day && s.time === time);
+          if (!slot) {
+            row.push("Free Period");
+            return;
+          }
 
           row.push(
             `${slot.subject?.name || "Free Period"}\n${
-              slot.teacher?.name || "-"
+              slot.teacher?.user?.username || "-"
             }\n${slot.room || ""}`
           );
         });
-
         return row;
       });
 
@@ -109,24 +101,22 @@ const ViewTimetables = () => {
         <div className="flex-grow-1 container mt-5">
           <h2 className="text-center mb-4">📅 All Timetables</h2>
 
-          {timetables.length === 0 ? (
+          {!timetables.length ? (
             <div className="alert alert-info text-center">
               No timetables found.
             </div>
           ) : (
-            timetables.map((timetable, idx) => {
-              const days = [...new Set(timetable.schedule.map((s) => s.day))];
-              const lunchAfter = timetable.lunchAfter ?? 3;
-
-              const times = [...new Set(timetable.schedule.map((s) => s.time))];
+            timetables.map((tt, idx) => {
+              const days = [...new Set(tt.schedule.map((s) => s.day))];
+              const times = [...new Set(tt.schedule.map((s) => s.time))];
               const modifiedTimes = [...times];
-              modifiedTimes.splice(lunchAfter, 0, "LUNCH");
+              modifiedTimes.splice(tt.lunchAfter ?? 3, 0, "LUNCH");
 
               return (
                 <div key={idx} className="mb-5">
                   <div className="card shadow-sm">
                     <div className="card-header bg-primary text-white fw-bold">
-                      Class: {timetable.className}
+                      Class: {tt.className}
                     </div>
 
                     <div className="card-body p-3">
@@ -155,7 +145,7 @@ const ViewTimetables = () => {
                                     );
                                   }
 
-                                  const slot = timetable.schedule.find(
+                                  const slot = tt.schedule.find(
                                     (s) => s.day === day && s.time === time
                                   );
 
@@ -164,11 +154,9 @@ const ViewTimetables = () => {
 
                                   return (
                                     <td key={i}>
-                                      <div>
-                                        {slot.subject?.name || "Free Period"}
-                                      </div>
+                                      <div>{slot.subject?.name || "Free Period"}</div>
                                       <div className="text-muted small">
-                                        {slot.teacher?.name || "-"}
+                                        {slot.teacher?.user?.username || "-"}
                                       </div>
                                       <div className="small">{slot.room}</div>
                                     </td>
@@ -188,10 +176,7 @@ const ViewTimetables = () => {
 
           {timetables.length > 0 && (
             <div className="text-center mt-4 d-flex gap-3 justify-content-center">
-              <button
-                className="btn btn-danger px-4"
-                onClick={handleDeleteAll}
-              >
+              <button className="btn btn-danger px-4" onClick={handleDeleteAll}>
                 🗑️ Delete All
               </button>
 
@@ -204,7 +189,6 @@ const ViewTimetables = () => {
             </div>
           )}
         </div>
-
         <Footer />
       </div>
     </>

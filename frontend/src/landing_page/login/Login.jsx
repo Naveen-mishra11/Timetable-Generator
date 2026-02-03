@@ -25,20 +25,24 @@ const Login = () => {
     e.preventDefault();
     try {
       // 🔗 Update with your backend login API route
-      const res = await axios.post(
-        `${serverUrl}/api/auth/login`,
-        formData
-      );
+      const res = await axios.post(`${serverUrl}/api/auth/login`, formData);
 
-      // ✅ Save token in localStorage
+      // ✅ Save token in sessionStorage
       if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
-        localStorage.setItem("role", res.data.role);
-        localStorage.setItem("username", res.data.username);
+        sessionStorage.setItem("token", res.data.token);
+        sessionStorage.setItem("role", res.data.role);
+        sessionStorage.setItem("username", res.data.username);
+
         setMessage("Login successful!");
-        navigate("/admin-home");
-      } else {
-        setMessage("No token received!");
+
+        // 🔐 Role-based redirect
+        if (res.data.role === "admin") {
+          navigate("/admin-home");
+        } else if (res.data.role === "teacher") {
+          navigate("/teacher-home");
+        } else {
+          navigate("/login"); // fallback
+        }
       }
 
       setFormData({ username: "", password: "" });

@@ -2,36 +2,54 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
+
 const serverUrl = import.meta.env.VITE_SERVER_URL;
 
 const AddTeacher = () => {
-  const [name, setName] = useState("");
+  const [teachers, setTeachers] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+
+  const [selectedTeacher, setSelectedTeacher] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState([]);
   const [teachingType, setTeachingType] = useState([]);
   const [maxConsecutive, setMaxConsecutive] = useState(2);
-  const [subjects, setSubjects] = useState([]);
-  const [message, setMessage] = useState("");
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
+    fetchTeachers();
     fetchSubjects();
   }, []);
 
+  /* ================= FETCH TEACHERS ================= */
+  const fetchTeachers = async () => {
+    try {
+      const res = await axios.get(`${serverUrl}/api/users/teachers`);
+      setTeachers(res.data);
+    } catch (err) {
+      setMessage("❌ Failed to load teachers",err);
+    }
+  };
+
+  /* ================= FETCH SUBJECTS ================= */
   const fetchSubjects = async () => {
     try {
       const res = await axios.get(`${serverUrl}/api/subjects`);
       setSubjects(res.data);
     } catch (err) {
-      setMessage(err.response?.data?.error || "Failed to load subjects");
+      setMessage("❌ Failed to load subjects",err);
     }
   };
 
+  /* ================= SUBJECT MULTI-SELECT ================= */
   const toggleSubject = (id) => {
     setSelectedSubjects((prev) =>
-      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
     );
   };
 
+  /* ================= TEACHING TYPE ================= */
   const handleTeachingTypeChange = (type) => {
     setTeachingType((prev) =>
       prev.includes(type)
@@ -40,14 +58,22 @@ const AddTeacher = () => {
     );
   };
 
+  /* ================= SUBMIT ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!selectedTeacher) {
+      setMessage("⚠️ Please select a teacher");
+      return;
+    }
+
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
+
       await axios.post(
         `${serverUrl}/api/teachers`,
         {
-          name,
+          user: selectedTeacher,        // 🔥 USER ID (Teacher)
           subjects: selectedSubjects,
           teachingType,
           maxConsecutive,
@@ -58,12 +84,12 @@ const AddTeacher = () => {
       );
 
       setMessage("✅ Teacher added successfully!");
-      setName("");
+      setSelectedTeacher("");
       setSelectedSubjects([]);
       setTeachingType([]);
       setMaxConsecutive(2);
     } catch (err) {
-      setMessage(err.response?.data?.error || "Failed to add teacher");
+      setMessage(err.response?.data?.error || "❌ Failed to add teacher");
     }
   };
 
@@ -73,24 +99,33 @@ const AddTeacher = () => {
       <div className="d-flex flex-column min-vh-100">
         <div className="flex-grow-1 container mt-5">
           <h2 className="text-center mb-4">Add Teacher</h2>
+
           {message && <div className="alert alert-info">{message}</div>}
 
           <form onSubmit={handleSubmit} className="shadow p-4 rounded bg-light">
-            {/* Teacher Name */}
+
+            {/* ================= SELECT TEACHER ================= */}
             <div className="mb-3">
-              <label className="form-label">Teacher Name</label>
-              <input
-                type="text"
-                className="form-control"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+              <label className="form-label">Select Teacher</label>
+              <select
+                className="form-select"
+                value={selectedTeacher}
+                onChange={(e) => setSelectedTeacher(e.target.value)}
                 required
-              />
+              >
+                <option value="">-- Select Teacher --</option>
+                {teachers.map((t) => (
+                  <option key={t._id} value={t._id}>
+                    {t.username}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Custom Multi-Select for Subjects */}
+            {/* ================= SUBJECT MULTI SELECT ================= */}
             <div className="mb-3 position-relative">
               <label className="form-label">Select Subjects</label>
+
               <div
                 className="form-control d-flex justify-content-between align-items-center"
                 style={{ cursor: "pointer" }}
@@ -99,9 +134,7 @@ const AddTeacher = () => {
                 {selectedSubjects.length > 0
                   ? `${selectedSubjects.length} subject(s) selected`
                   : "Select subjects"}
-                <i
-                  className={`bi bi-chevron-${dropdownOpen ? "up" : "down"}`}
-                ></i>
+                <i className={`bi bi-chevron-${dropdownOpen ? "up" : "down"}`} />
               </div>
 
               {dropdownOpen && (
@@ -116,16 +149,12 @@ const AddTeacher = () => {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <input
-                        className="form-check-input"
                         type="checkbox"
-                        id={subj._id}
+                        className="form-check-input"
                         checked={selectedSubjects.includes(subj._id)}
                         onChange={() => toggleSubject(subj._id)}
                       />
-                      <label
-                        htmlFor={subj._id}
-                        className="form-check-label"
-                      >
+                      <label className="form-check-label">
                         {subj.name} ({subj.code})
                       </label>
                     </div>
@@ -134,45 +163,40 @@ const AddTeacher = () => {
               )}
             </div>
 
-            {/* Teaching Type (Theory / Lab) */}
+            {/* ================= TEACHING TYPE ================= */}
             <div className="mb-3">
               <label className="form-label d-block">Teaching Type</label>
+
               <div className="form-check form-check-inline">
                 <input
                   type="checkbox"
                   className="form-check-input"
-                  id="theory"
                   checked={teachingType.includes("theory")}
                   onChange={() => handleTeachingTypeChange("theory")}
                 />
-                <label htmlFor="theory" className="form-check-label">
-                  Theory
-                </label>
+                <label className="form-check-label">Theory</label>
               </div>
 
               <div className="form-check form-check-inline">
                 <input
                   type="checkbox"
                   className="form-check-input"
-                  id="lab"
                   checked={teachingType.includes("lab")}
                   onChange={() => handleTeachingTypeChange("lab")}
                 />
-                <label htmlFor="lab" className="form-check-label">
-                  Lab
-                </label>
+                <label className="form-check-label">Lab</label>
               </div>
             </div>
 
-            {/* Max Consecutive Classes */}
+            {/* ================= MAX CONSECUTIVE ================= */}
             <div className="mb-3">
               <label className="form-label">Max Consecutive Classes</label>
               <input
                 type="number"
                 className="form-control"
+                min="1"
                 value={maxConsecutive}
                 onChange={(e) => setMaxConsecutive(Number(e.target.value))}
-                min="1"
               />
             </div>
 
@@ -181,6 +205,7 @@ const AddTeacher = () => {
             </button>
           </form>
         </div>
+
         <Footer />
       </div>
     </>

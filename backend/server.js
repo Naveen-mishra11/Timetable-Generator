@@ -17,6 +17,9 @@ app.use("/api/subjects", require("./routes/subjectRoutes"));
 app.use("/api/teachers", require("./routes/teacherRoutes"));
 app.use("/api/classes", require("./routes/classRoutes"));
 app.use("/api/timetable", require("./routes/timetableRoutes"));
+app.use("/api/users", require("./routes/userRoutes"));
+app.use("/api/teacher-timetable", require("./routes/teacherTimetableRoute"));
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

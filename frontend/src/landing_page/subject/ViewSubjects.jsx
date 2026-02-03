@@ -24,7 +24,7 @@ const ViewSubjects = () => {
 
   const handleDelete = async (id) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       await axios.delete(`${serverUrl}/api/subjects/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

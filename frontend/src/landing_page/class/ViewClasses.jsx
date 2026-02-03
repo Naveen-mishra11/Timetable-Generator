@@ -29,7 +29,7 @@ const ViewClasses = () => {
     if (!window.confirm("Are you sure you want to delete this class?")) return;
 
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       await axios.delete(`${SERVER_URL}/api/classes/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

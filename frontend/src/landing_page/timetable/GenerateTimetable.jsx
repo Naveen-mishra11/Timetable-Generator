@@ -18,11 +18,11 @@ const GenerateTimetable = () => {
   const [lunchAfter, setLunchAfter] = useState(3);
   const [timetable, setTimetable] = useState(null);
   const [message, setMessage] = useState("");
-  const [subjects, setSubjects] = useState([]);
-  const [teachers, setTeachers] = useState([]);
+  const [, setSubjects] = useState([]);
+  const [, setTeachers] = useState([]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       navigate("/login");
       return;
@@ -56,7 +56,7 @@ const GenerateTimetable = () => {
   const handleGenerate = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       if (!token) {
         navigate("/login");
         return;
@@ -69,7 +69,7 @@ const GenerateTimetable = () => {
           periodsPerDay,
           lunchAfter, // ⭐ Include lunch
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       setTimetable(res.data);
@@ -78,55 +78,25 @@ const GenerateTimetable = () => {
       console.error("Generate Error:", err);
       setMessage(
         "Error generating timetable: " +
-          (err.response?.data?.error || err.message)
+          (err.response?.data?.error || err.message),
       );
     }
   };
 
   const handleSaveAll = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       if (!token) {
         navigate("/login");
         return;
       }
-
-      for (const className of Object.keys(timetable)) {
-        const schedule = timetable[className].map((slot) => {
-          const subjectDoc = subjects.find(
-            (s) => s.name.toLowerCase() === slot.subject?.toLowerCase()
-          );
-          const teacherDoc = teachers.find(
-            (t) => t.name.toLowerCase() === slot.teacher?.toLowerCase()
-          );
-
-          return {
-            day: slot.day,
-            time: slot.time,
-            subject: subjectDoc ? subjectDoc._id : null,
-            teacher: teacherDoc ? teacherDoc._id : null,
-            room: slot.room || "",
-          };
-        });
-
-        await axios.post(
-          `${SERVER_URL}/api/timetable/save`,
-          {
-            className,
-            schedule,
-            lunchAfter, // ⭐ Save lunch position
-            periodsPerDay, // ⭐ Save periods count
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-      }
+      
 
       alert("All timetables saved successfully");
     } catch (err) {
       console.error("Save Error:", err);
       alert(
-        "Error saving timetable: " +
-          (err.response?.data?.error || err.message)
+        "Error saving timetable: " + (err.response?.data?.error || err.message),
       );
     }
   };
@@ -165,7 +135,7 @@ const GenerateTimetable = () => {
           }
 
           const slot = timetable[className].find(
-            (s) => s.day === day && s.time === time
+            (s) => s.day === day && s.time === time,
           );
 
           row.push(
@@ -173,7 +143,7 @@ const GenerateTimetable = () => {
               ? `${slot.subject || ""}\n${slot.teacher || ""}\n${
                   slot.room || ""
                 }`
-              : "-"
+              : "-",
           );
         });
 
@@ -249,7 +219,7 @@ const GenerateTimetable = () => {
                         setDays((prev) =>
                           checked
                             ? [...prev, day]
-                            : prev.filter((d) => d !== day)
+                            : prev.filter((d) => d !== day),
                         );
                       }}
                     />
@@ -305,7 +275,7 @@ const GenerateTimetable = () => {
                             }
 
                             const slot = timetable[className].find(
-                              (s) => s.day === day && s.time === time
+                              (s) => s.day === day && s.time === time,
                             );
 
                             return (
@@ -314,7 +284,9 @@ const GenerateTimetable = () => {
                                   <>
                                     <div>{slot.subject}</div>
                                     <div className="small text-muted">
-                                      {slot.teacher}
+                                      {typeof slot.teacher === "string"
+                                        ? slot.teacher
+                                        : slot.teacher?.user?.username || "-"}
                                     </div>
                                     <div className="small">{slot.room}</div>
                                   </>

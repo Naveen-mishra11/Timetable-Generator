@@ -59,7 +59,13 @@ router.get("/all", authMiddleware, async (req, res) => {
   try {
     const timetables = await Timetable.find()
       .populate("schedule.subject")
-      .populate("schedule.teacher");
+      .populate({
+    path: "schedule.teacher",
+    populate: {
+      path: "user",
+      select: "username",
+    },
+  });
 
     res.json(timetables);
   } catch (err) {

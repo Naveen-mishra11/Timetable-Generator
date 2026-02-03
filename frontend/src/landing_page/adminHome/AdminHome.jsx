@@ -9,8 +9,8 @@ const AdminHome = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const userRole = localStorage.getItem("role");
-    const userName = localStorage.getItem("username");
+    const userRole = sessionStorage.getItem("role");
+    const userName = sessionStorage.getItem("username");
 
     // redirect if not logged in or not admin
     if (!userRole || userRole !== "admin") {

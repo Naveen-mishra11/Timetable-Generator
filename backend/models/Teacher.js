@@ -1,7 +1,12 @@
 const mongoose = require("mongoose");
 
 const teacherSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    unique: true
+  },
 
   subjects: [
     { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true }
@@ -15,5 +20,6 @@ const teacherSchema = new mongoose.Schema({
 
   maxConsecutive: { type: Number, default: 2 },
 });
+
 
 module.exports = mongoose.model("Teacher", teacherSchema);

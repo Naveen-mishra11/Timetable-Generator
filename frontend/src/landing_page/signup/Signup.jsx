@@ -26,20 +26,18 @@ const Signup = () => {
     e.preventDefault();
     try {
       // 🔗 Update with your backend signup API route
-      const res = await axios.post(
-        `${serverUrl}/api/auth/register`,
-        formData
-      );
+      const res = await axios.post(`${serverUrl}/api/auth/register`, formData);
 
-      // ✅ Save token in localStorage if provided
+      // ✅ Save token in sessionStorage if provided
       if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
+        sessionStorage.setItem("token", res.data.token);
         navigate("/login");
       }
 
       setMessage(res.data.message || "User registered successfully!");
       setFormData({ username: "", password: "", role: "admin" });
     } catch (err) {
+      console.error("Signup error:", err.response?.data);
       setMessage(err.response?.data?.error || "Something went wrong!");
     }
   };

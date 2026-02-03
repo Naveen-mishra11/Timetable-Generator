@@ -1,6 +1,30 @@
 const express = require("express");
 const router = express.Router();
 const Teacher = require("../models/Teacher");
+const authMiddleware = require("../middleware/authMiddleware");
+
+// Get teacher profile
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const teacher = await Teacher.findOne({ user: req.user.id })
+      .populate("subjects")
+      .populate("user", "username");
+
+    if (!teacher) {
+      return res.status(404).json({ error: "Teacher profile not found" });
+    }
+
+    res.json({
+      _id: teacher._id,
+      name: teacher.user.username,
+      subjects: teacher.subjects,
+    });
+  } catch (err) {
+    console.error("Get teacher profile error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Add teacher
 router.post("/", async (req, res) => {
@@ -17,7 +41,8 @@ router.post("/", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const teachers = await Teacher.find()
-      .populate("subjects", "name code type") // populate name, code, and type (theory/lab)
+      .populate("subjects")
+      .populate("user", "username") // populate name, code, and type (theory/lab)
       .lean();
 
     res.json(teachers);
@@ -38,5 +63,6 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 module.exports = router;

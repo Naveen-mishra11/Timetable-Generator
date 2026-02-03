@@ -59,7 +59,7 @@ const ViewTeachers = () => {
               <tbody>
                 {teachers.map((teacher) => (
                   <tr key={teacher._id}>
-                    <td>{teacher.name}</td>
+                    <td>{teacher.user?.username || "N/A"}</td>
 
                     {/* Show all subjects */}
                     <td>

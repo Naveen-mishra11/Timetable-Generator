@@ -5,6 +5,7 @@ import HomePage from "./landing_page/home/HomePage";
 import Signup from "./landing_page/signup/Signup";
 import Login from "./landing_page/login/Login";
 import AdminHome from "./landing_page/adminHome/AdminHome";
+import TeacherHome from "./landing_page/teacherHome/TeacherHomePage";
 import AddSubject from "./landing_page/subject/AddSubject";
 import ViewSubjects from "./landing_page/subject/ViewSubjects";
 import AddTeacher from "./landing_page/teacher/AddTeacher";
@@ -13,6 +14,8 @@ import AddClass from "./landing_page/class/AddClass";
 import ViewClasses from "./landing_page/class/ViewClasses";
 import GenerateTimetable from "./landing_page/timetable/GenerateTimetable";
 import ViewTimetables from "./landing_page/timetable/ViewTimetables";
+import TeacherTimetable from "./landing_page/teacherTimetable/TeacherTimetable";
+import ViewTeacherSubjects from "./landing_page/teacherSubjects/ViewTeacherSubjects";
 
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
@@ -21,6 +24,9 @@ createRoot(document.getElementById("root")).render(
       <Route path="/signup" element={<Signup/>} />
       <Route path="/login" element={<Login/>} />
       <Route path="/admin-home" element={<AdminHome/>} />
+      <Route path="/teacher-home" element={<TeacherHome />} />
+      <Route path="/teacher-timetable" element={<TeacherTimetable />} />
+      <Route path="/teacher-subjects" element={<ViewTeacherSubjects />} />
       <Route path="/add-subject" element={<AddSubject/>} />
       <Route path="/view-subject" element={<ViewSubjects/>} />
       <Route path="/add-teacher" element={<AddTeacher/>} />
