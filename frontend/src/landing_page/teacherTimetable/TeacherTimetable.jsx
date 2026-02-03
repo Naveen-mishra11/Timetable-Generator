@@ -105,6 +105,16 @@ const TeacherTimetable = () => {
                                           <div className="small text-muted">
                                             {slot.room}
                                           </div>
+                                          {slot.substituteTeacher && (
+                                            <div className="small text-success">
+                                              Substitute: {slot.substituteTeacher}
+                                            </div>
+                                          )}
+                                          {slot.substitutionStatus === "unassigned" && (
+                                            <div className="small text-danger">
+                                              Substitute: UNASSIGNED
+                                            </div>
+                                          )}
                                         </>
                                       ) : (
                                         "-"

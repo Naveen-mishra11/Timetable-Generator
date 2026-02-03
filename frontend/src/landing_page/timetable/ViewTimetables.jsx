@@ -9,10 +9,20 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 const ViewTimetables = () => {
   const [timetables, setTimetables] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10); // yyyy-mm-dd
+  });
+  const [subsByKey, setSubsByKey] = useState({}); // { "class_day_time": { substituteTeacherName, status } }
 
   useEffect(() => {
     fetchTimetables();
   }, []);
+
+  useEffect(() => {
+    fetchSubstitutionsForDate(selectedDate);
+  }, [selectedDate]);
 
   const fetchTimetables = async () => {
     try {
@@ -23,6 +33,31 @@ const ViewTimetables = () => {
       setTimetables(res.data);
     } catch (err) {
       console.error("Error fetching timetables:", err);
+    }
+  };
+
+  const fetchSubstitutionsForDate = async (dateStr) => {
+    try {
+      // dateStr = yyyy-mm-dd, backend expects ISO-ish; passing date string works.
+      const res = await axios.get(
+        `${SERVER_URL}/api/leaves/substitutions?date=${encodeURIComponent(dateStr)}`,
+        {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
+        }
+      );
+
+      const map = {};
+      for (const s of res.data || []) {
+        const key = `${s.className}_${s.weekday}_${s.time}`;
+        map[key] = {
+          substituteTeacherName: s.substituteTeacher?.user?.username || null,
+          status: s.status,
+        };
+      }
+      setSubsByKey(map);
+    } catch (err) {
+      console.error("Error fetching substitutions:", err);
+      setSubsByKey({});
     }
   };
 
@@ -101,6 +136,23 @@ const ViewTimetables = () => {
         <div className="flex-grow-1 container mt-5">
           <h2 className="text-center mb-4">📅 All Timetables</h2>
 
+          <div className="card p-3 shadow-sm mb-4">
+            <div className="row align-items-center g-2">
+              <div className="col-md-3">
+                <label className="form-label mb-1">View for Date (substitutions)</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                />
+              </div>
+              <div className="col-md-9 small text-muted">
+                This view overlays substitutions (if any) for the selected date. Your base weekly timetable is unchanged.
+              </div>
+            </div>
+          </div>
+
           {!timetables.length ? (
             <div className="alert alert-info text-center">
               No timetables found.
@@ -156,7 +208,31 @@ const ViewTimetables = () => {
                                     <td key={i}>
                                       <div>{slot.subject?.name || "Free Period"}</div>
                                       <div className="text-muted small">
-                                        {slot.teacher?.user?.username || "-"}
+                                        {(() => {
+                                          const subKey = `${tt.className}_${day}_${time}`;
+                                          const sub = subsByKey[subKey];
+                                          if (sub?.status === "assigned" && sub.substituteTeacherName) {
+                                            return (
+                                              <>
+                                                <span className="text-decoration-line-through">
+                                                  {slot.teacher?.user?.username || "-"}
+                                                </span>
+                                                <span className="text-success">
+                                                  {` → ${sub.substituteTeacherName}`}
+                                                </span>
+                                              </>
+                                            );
+                                          }
+                                          if (sub?.status === "unassigned") {
+                                            return (
+                                              <>
+                                                {slot.teacher?.user?.username || "-"}
+                                                <span className="text-danger"> (Substitute UNASSIGNED)</span>
+                                              </>
+                                            );
+                                          }
+                                          return slot.teacher?.user?.username || "-";
+                                        })()}
                                       </div>
                                       <div className="small">{slot.room}</div>
                                     </td>

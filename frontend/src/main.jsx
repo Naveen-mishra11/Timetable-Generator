@@ -16,6 +16,10 @@ import GenerateTimetable from "./landing_page/timetable/GenerateTimetable";
 import ViewTimetables from "./landing_page/timetable/ViewTimetables";
 import TeacherTimetable from "./landing_page/teacherTimetable/TeacherTimetable";
 import ViewTeacherSubjects from "./landing_page/teacherSubjects/ViewTeacherSubjects";
+import ApplyLeave from "./landing_page/leave/ApplyLeave";
+import MyLeaves from "./landing_page/leave/MyLeaves";
+import PendingLeaves from "./landing_page/adminLeave/PendingLeaves";
+import ViewSubstitutions from "./landing_page/adminLeave/ViewSubstitutions";
 
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
@@ -27,6 +31,8 @@ createRoot(document.getElementById("root")).render(
       <Route path="/teacher-home" element={<TeacherHome />} />
       <Route path="/teacher-timetable" element={<TeacherTimetable />} />
       <Route path="/teacher-subjects" element={<ViewTeacherSubjects />} />
+      <Route path="/apply-leave" element={<ApplyLeave />} />
+      <Route path="/my-leaves" element={<MyLeaves />} />
       <Route path="/add-subject" element={<AddSubject/>} />
       <Route path="/view-subject" element={<ViewSubjects/>} />
       <Route path="/add-teacher" element={<AddTeacher/>} />
@@ -35,6 +41,8 @@ createRoot(document.getElementById("root")).render(
       <Route path="/view-class" element={<ViewClasses/>} />
       <Route path="/generate-timetable" element={<GenerateTimetable/>} />
       <Route path="/view-timetable" element={<ViewTimetables/>}/>
+      <Route path="/pending-leaves" element={<PendingLeaves/>} />
+      <Route path="/view-substitutions" element={<ViewSubstitutions/>} />
     </Routes>
   </BrowserRouter>
 );

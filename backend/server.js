@@ -20,6 +20,9 @@ app.use("/api/timetable", require("./routes/timetableRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/teacher-timetable", require("./routes/teacherTimetableRoute"));
 
+// Leave management
+app.use("/api/leaves", require("./routes/leaveRoutes"));
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

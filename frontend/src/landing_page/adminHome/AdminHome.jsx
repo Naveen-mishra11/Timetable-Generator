@@ -91,8 +91,9 @@ const AdminHome = () => {
               <p>
                 Here you can add the Class for the
                 <br />
-                timetable generator app.The Class <br /> contain Class Name,
-                and Which <br />subject will be taught in the class.
+                timetable generator app.The Class <br /> contain Class Name, and
+                Which <br />
+                subject will be taught in the class.
               </p>
               <button
                 className="btn btn-primary m-2"
@@ -116,8 +117,8 @@ const AdminHome = () => {
             <div className="p-3 ">
               <h5>Generate Timetable</h5>
               <p>
-                Here you can generate the timetable for <br /> the class. 
-                Its uses the subject , teacher and <br /> class data to generate the
+                Here you can generate the timetable for <br /> the class. Its
+                uses the subject , teacher and <br /> class data to generate the
                 Timetable. Here <br /> you can view or generate timetable.
               </p>
               <button
@@ -134,6 +135,33 @@ const AdminHome = () => {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="row justify-content-center">
+          <div className="col-md-5 card shadow mt-5">
+            <div className="p-3">
+              <h5>Leave Management</h5>
+              <p>
+                This section is for checking leave requests <br />and assign a new
+                substitution
+              </p>
+              <button
+                className="btn btn-primary m-2"
+                onClick={() => navigate("/pending-leaves")}
+              >
+                Pending Leaves
+              </button>
+              <button
+                className="btn btn-primary m-2"
+                onClick={() => navigate("/view-substitutions")}
+              >
+                View Substitutions
+              </button>
+            </div>
+          </div>
+
+          <div className="col-md-2"></div>
+          <div className="col-md-5"></div>
         </div>
       </div>
       <Footer />
