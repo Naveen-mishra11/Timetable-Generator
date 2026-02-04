@@ -25,37 +25,52 @@ exports.generateTimetable = async (req, res) => {
     if (!teachers.length)
       return res.status(400).json({ error: "No teachers found" });
 
-    // Global state tracking - CRITICAL: This prevents double-booking across all classes
-    let globalTeacherAllocation = {}; // Format: { "Monday_P1": ["teacherId1", "teacherId2"] }
-    let globalTeacherWeeklyHours = {}; // Format: { "teacherId": hours }
-    let teacherConsecutiveCount = {}; // Format: { "teacherId_Monday": count }
-    let teacherLastPeriod = {}; // Format: { "teacherId_Monday": periodNumber }
+    // Global state tracking
+    let globalTeacherAllocation = {};
+    let globalTeacherWeeklyHours = {};
+    let teacherConsecutiveCount = {};
+    let teacherLastPeriod = {};
+    // Track teacher's daily theory period count per class
+    let teacherDailyTheoryCount = {}; // Format: { "teacherId_className_Monday": count }
+    // Track if teacher taught lab in a class on a day
+    let teacherDailyLabFlag = {}; // Format: { "teacherId_className_Monday": boolean }
 
-    // Check if teacher is available for this slot (cross-class conflict detection)
     const isTeacherAvailable = (teacherId, day, period, isLab = false) => {
       const tId = teacherId.toString();
       const slotKey = `${day}_P${period}`;
       const nextSlotKey = `${day}_P${period + 1}`;
-      const dayKey = `${tId}_${day}`;
 
-      // CRITICAL CHECK: Is teacher already teaching another class at this time?
       if (globalTeacherAllocation[slotKey]?.includes(tId)) {
         return { available: false, reason: "conflict" };
       }
       
-      // For labs, check next period too
       if (isLab && globalTeacherAllocation[nextSlotKey]?.includes(tId)) {
         return { available: false, reason: "lab_conflict" };
       }
 
-      // Check weekly hours limit (17 hours max)
       const currentHours = globalTeacherWeeklyHours[tId] || 0;
       const requiredHours = isLab ? 2 : 1;
       if (currentHours + requiredHours > 17) {
         return { available: false, reason: "hours_limit" };
       }
 
-      return { available: true, dayKey, currentHours };
+      return { available: true, currentHours };
+    };
+
+    // Check daily theory limit for teacher in specific class
+    const canTeachTheoryToday = (teacherId, className, day) => {
+      const tId = teacherId.toString();
+      const theoryKey = `${tId}_${className}_${day}`;
+      const labKey = `${tId}_${className}_${day}`;
+      
+      const theoryCount = teacherDailyTheoryCount[theoryKey] || 0;
+      const taughtLabToday = teacherDailyLabFlag[labKey] || false;
+      
+      // If taught lab today, max 1 theory period
+      // If no lab today, max 2 theory periods
+      const maxTheoryAllowed = taughtLabToday ? 1 : 2;
+      
+      return theoryCount < maxTheoryAllowed;
     };
 
     const canAssignTeacher = (
@@ -63,18 +78,26 @@ exports.generateTimetable = async (req, res) => {
       day,
       period,
       isLab = false,
-      relaxConsecutive = false
+      relaxConsecutive = false,
+      className = null // needed for daily limit check
     ) => {
       const tId = teacher._id.toString();
       const availability = isTeacherAvailable(tId, day, period, isLab);
       
       if (!availability.available) return false;
 
-      // Check consecutive periods constraint (only if not relaxed)
+      // Check daily theory limit for this class
+      if (!isLab && className) {
+        if (!canTeachTheoryToday(tId, className, day)) {
+          return false;
+        }
+      }
+
       if (!relaxConsecutive) {
         const maxConsecutive = teacher.maxConsecutive || 2;
-        const lastPeriod = teacherLastPeriod[availability.dayKey];
-        const consecutiveCount = teacherConsecutiveCount[availability.dayKey] || 0;
+        const dayKey = `${tId}_${day}`;
+        const lastPeriod = teacherLastPeriod[dayKey];
+        const consecutiveCount = teacherConsecutiveCount[dayKey] || 0;
 
         if (lastPeriod && period === lastPeriod + 1) {
           if (consecutiveCount >= maxConsecutive) return false;
@@ -84,31 +107,39 @@ exports.generateTimetable = async (req, res) => {
       return true;
     };
 
-    const assignTeacher = (teacher, day, period, isLab = false) => {
+    const assignTeacher = (teacher, day, period, isLab = false, className = null) => {
       const tId = teacher._id.toString();
       const slotKey = `${day}_P${period}`;
       const nextSlotKey = `${day}_P${period + 1}`;
       const dayKey = `${tId}_${day}`;
-      const lastPeriod = teacherLastPeriod[dayKey];
 
-      // Mark teacher as allocated for this slot
       if (!globalTeacherAllocation[slotKey])
         globalTeacherAllocation[slotKey] = [];
       globalTeacherAllocation[slotKey].push(tId);
 
-      // For labs, mark next period too
       if (isLab) {
         if (!globalTeacherAllocation[nextSlotKey])
           globalTeacherAllocation[nextSlotKey] = [];
         globalTeacherAllocation[nextSlotKey].push(tId);
+        
+        // Mark that teacher taught lab in this class today
+        if (className) {
+          const labFlagKey = `${tId}_${className}_${day}`;
+          teacherDailyLabFlag[labFlagKey] = true;
+        }
+      } else {
+        // Increment theory count for this class today
+        if (className) {
+          const theoryKey = `${tId}_${className}_${day}`;
+          teacherDailyTheoryCount[theoryKey] = (teacherDailyTheoryCount[theoryKey] || 0) + 1;
+        }
       }
 
-      // Update hours
       const requiredHours = isLab ? 2 : 1;
       globalTeacherWeeklyHours[tId] =
         (globalTeacherWeeklyHours[tId] || 0) + requiredHours;
 
-      // Update consecutive tracking
+      const lastPeriod = teacherLastPeriod[dayKey];
       if (lastPeriod && period === lastPeriod + 1) {
         teacherConsecutiveCount[dayKey] =
           (teacherConsecutiveCount[dayKey] || 0) + 1;
@@ -119,11 +150,10 @@ exports.generateTimetable = async (req, res) => {
       teacherLastPeriod[dayKey] = isLab ? period + 1 : period;
     };
 
-    const unassignTeacher = (teacher, day, period, isLab = false) => {
+    const unassignTeacher = (teacher, day, period, isLab = false, className = null) => {
       const tId = teacher._id.toString();
       const slotKey = `${day}_P${period}`;
       const nextSlotKey = `${day}_P${period + 1}`;
-      const dayKey = `${tId}_${day}`;
 
       if (globalTeacherAllocation[slotKey]) {
         globalTeacherAllocation[slotKey] = globalTeacherAllocation[slotKey].filter(id => id !== tId);
@@ -135,16 +165,25 @@ exports.generateTimetable = async (req, res) => {
       const requiredHours = isLab ? 2 : 1;
       globalTeacherWeeklyHours[tId] = Math.max(0, (globalTeacherWeeklyHours[tId] || 0) - requiredHours);
       
+      // Decrement tracking
+      if (isLab && className) {
+        const labFlagKey = `${tId}_${className}_${day}`;
+        teacherDailyLabFlag[labFlagKey] = false;
+      } else if (className) {
+        const theoryKey = `${tId}_${className}_${day}`;
+        teacherDailyTheoryCount[theoryKey] = Math.max(0, (teacherDailyTheoryCount[theoryKey] || 0) - 1);
+      }
+      
+      const dayKey = `${tId}_${day}`;
       teacherConsecutiveCount[dayKey] = 0;
       teacherLastPeriod[dayKey] = null;
     };
 
-    // Get teacher workload score
     const getTeacherLoadScore = (teacher) => {
       return globalTeacherWeeklyHours[teacher._id.toString()] || 0;
     };
 
-    // ENHANCED: Find best teacher with strict conflict checking
+    // Added className parameter for daily limit checking
     const findBestTeacher = (
       subject,
       day,
@@ -152,12 +191,12 @@ exports.generateTimetable = async (req, res) => {
       isLab,
       lastTeacherId,
       allTeachers,
+      className, // required for daily limit check
       preferredTeacher = null,
       avoidTeachers = new Set()
     ) => {
       const subjectId = subject._id.toString();
       
-      // Filter qualified teachers
       const qualifiedTeachers = allTeachers.filter(
         (t) =>
           t.subjects.some((s) => s._id.toString() === subjectId) &&
@@ -167,23 +206,28 @@ exports.generateTimetable = async (req, res) => {
 
       if (!qualifiedTeachers.length) return null;
 
-      // STRICT CHECK: Filter out teachers already booked at this slot
+      // STRICT CHECK: Filter out teachers already booked at this slot AND check daily limits
       const availableTeachers = qualifiedTeachers.filter(t => {
         const availability = isTeacherAvailable(t._id, day, period, isLab);
-        return availability.available;
+        if (!availability.available) return false;
+        
+        // Checking daily theory period limit
+        if (!isLab && className) {
+          if (!canTeachTheoryToday(t._id, className, day)) return false;
+        }
+        
+        return true;
       });
 
       if (!availableTeachers.length) {
-        console.log(`    ⚠️ No available teachers for ${subject.name} at ${day} P${period} - all are conflicted or at hour limit`);
+        console.log(`    ⚠️ No available teachers for ${subject.name} at ${day} P${period}`);
         return null;
       }
 
-      // Sort by current workload (ascending) for load balancing
       const sortedByLoad = availableTeachers.sort((a, b) => {
         return getTeacherLoadScore(a) - getTeacherLoadScore(b);
       });
 
-      // Strategy 1: Try preferred teacher if available and not consecutive
       if (preferredTeacher) {
         const preferred = sortedByLoad.find(
           (t) => t._id.toString() === preferredTeacher.toString()
@@ -193,7 +237,6 @@ exports.generateTimetable = async (req, res) => {
           (!lastTeacherId ||
             lastTeacherId.toString() !== preferred._id.toString())
         ) {
-          // Check consecutive constraint
           const maxConsecutive = preferred.maxConsecutive || 2;
           const dayKey = `${preferred._id.toString()}_${day}`;
           const lastP = teacherLastPeriod[dayKey];
@@ -205,7 +248,6 @@ exports.generateTimetable = async (req, res) => {
         }
       }
 
-      // Strategy 2: Try least loaded teachers first, avoiding consecutive same teacher
       for (let teacher of sortedByLoad) {
         if (
           lastTeacherId &&
@@ -224,7 +266,6 @@ exports.generateTimetable = async (req, res) => {
         return teacher;
       }
 
-      // Strategy 3: Allow consecutive if absolutely necessary
       for (let teacher of sortedByLoad) {
         return teacher;
       }
@@ -232,7 +273,6 @@ exports.generateTimetable = async (req, res) => {
       return null;
     };
 
-    // Calculate class requirements for prioritization
     const calculateClassRequirements = (cls) => {
       let totalHours = 0;
       const labSubjects = cls.subjects.filter(s => s.type === 'lab');
@@ -248,7 +288,6 @@ exports.generateTimetable = async (req, res) => {
       return { totalHours, labCount: labSubjects.length, theoryCount: theorySubjects.length };
     };
 
-    // Sort classes by difficulty (most constrained first)
     const sortedClasses = [...classes].sort((a, b) => {
       const reqA = calculateClassRequirements(a);
       const reqB = calculateClassRequirements(b);
@@ -264,7 +303,6 @@ exports.generateTimetable = async (req, res) => {
 
       console.log(`\n📚 Processing ${className}...`);
 
-      // Step 1: Build subject-teacher mapping with load balancing
       let subjectTeacherMap = {};
       const subjectsByName = {};
 
@@ -298,7 +336,6 @@ exports.generateTimetable = async (req, res) => {
         });
 
         if (candidateTeachers.length > 0) {
-          // Choose teacher with lowest current workload
           const chosen = candidateTeachers.sort((a, b) => 
             getTeacherLoadScore(a) - getTeacherLoadScore(b)
           )[0];
@@ -307,7 +344,6 @@ exports.generateTimetable = async (req, res) => {
             subjectTeacherMap[sub._id.toString()] = chosen;
           }
         } else {
-          // Fallback: assign separately with load balancing
           for (let sub of subjects) {
             const fallbackTeachers = teachers.filter(
               (t) =>
@@ -332,15 +368,13 @@ exports.generateTimetable = async (req, res) => {
         }
       }
 
-      // Step 2: Schedule labs with conflict checking
       let labScheduleMap = [];
       const labSubjects = cls.subjects.filter((sub) => sub.type === "lab");
       let labsScheduledThisWeek = new Set();
 
       const scheduleLabs = () => {
-        // Clear previous lab assignments for this class
         labScheduleMap.forEach(lab => {
-          unassignTeacher(lab.teacher, lab.day, lab.period, true);
+          unassignTeacher(lab.teacher, lab.day, lab.period, true, className);
         });
         labScheduleMap = [];
         labsScheduledThisWeek.clear();
@@ -370,7 +404,6 @@ exports.generateTimetable = async (req, res) => {
             for (let labSubject of availableLabs) {
               const primaryTeacher = subjectTeacherMap[labSubject._id.toString()];
               
-              // STRICT: Check if primary teacher is available at this slot
               let selectedTeacher = null;
               
               if (primaryTeacher) {
@@ -380,7 +413,6 @@ exports.generateTimetable = async (req, res) => {
                 }
               }
               
-              // If primary not available, find any available qualified teacher
               if (!selectedTeacher) {
                 selectedTeacher = findBestTeacher(
                   labSubject,
@@ -389,12 +421,12 @@ exports.generateTimetable = async (req, res) => {
                   true,
                   null,
                   teachers,
-                  null
+                  className // Pass className
                 );
               }
 
               if (selectedTeacher) {
-                assignTeacher(selectedTeacher, day, p, true);
+                assignTeacher(selectedTeacher, day, p, true, className); // Pass className
                 labsScheduledThisWeek.add(labSubject._id.toString());
                 labScheduledToday = true;
 
@@ -425,12 +457,10 @@ exports.generateTimetable = async (req, res) => {
         console.log(`  ⚠️ Warning: Could not schedule all labs for ${className}`);
       }
 
-      // Step 3: Fill theory subjects with strict conflict checking
       const classRoom = `Room-${Math.floor(Math.random() * 300) + 100}`;
       let dailySchedule = [];
       let theorySubjectFrequency = {};
 
-      // Add labs to schedule
       for (let lab of labScheduleMap) {
         const { day, period, subject, teacher } = lab;
         const labRoom = `Lab-${Math.floor(Math.random() * 20) + 1}`;
@@ -528,13 +558,14 @@ exports.generateTimetable = async (req, res) => {
           for (let selectedSubject of availableTheory) {
             const primaryTeacher = subjectTeacherMap[selectedSubject._id.toString()];
             
-            // CRITICAL: Check if primary teacher is actually available at this slot
             let selectedTeacher = null;
             
             if (primaryTeacher) {
               const avail = isTeacherAvailable(primaryTeacher._id, day, p, false);
-              if (avail.available && (!lastTeacher || lastTeacher.toString() !== primaryTeacher._id.toString())) {
-                // Check consecutive constraint
+              // Check daily theory subject limit
+              const canTakeTheory = canTeachTheoryToday(primaryTeacher._id, className, day);
+              
+              if (avail.available && canTakeTheory && (!lastTeacher || lastTeacher.toString() !== primaryTeacher._id.toString())) {
                 const dayKey = `${primaryTeacher._id.toString()}_${day}`;
                 const lastP = teacherLastPeriod[dayKey];
                 const consecCount = teacherConsecutiveCount[dayKey] || 0;
@@ -546,7 +577,6 @@ exports.generateTimetable = async (req, res) => {
               }
             }
             
-            // If primary not available, find alternative
             if (!selectedTeacher) {
               selectedTeacher = findBestTeacher(
                 selectedSubject,
@@ -555,12 +585,12 @@ exports.generateTimetable = async (req, res) => {
                 false,
                 lastTeacher,
                 teachers,
-                null
+                className // Pass className for daily limit check
               );
             }
 
             if (selectedTeacher) {
-              assignTeacher(selectedTeacher, day, p, false);
+              assignTeacher(selectedTeacher, day, p, false, className); // Pass className
               lastTeacher = selectedTeacher._id;
               lastSubject = selectedSubject._id;
               
@@ -591,7 +621,6 @@ exports.generateTimetable = async (req, res) => {
         }
       }
 
-      // Step 4: Smart filling with conflict awareness
       console.log(`\n🔧 Smart filling for ${className}...`);
       let filledCount = 0;
 
@@ -623,7 +652,6 @@ exports.generateTimetable = async (req, res) => {
           );
           if (!subject) continue;
 
-          // Find any available teacher, checking global conflicts
           const qualifiedTeachers = teachers.filter(
             (t) =>
               t.subjects.some((s) => s._id.toString() === subjectId) &&
@@ -638,21 +666,21 @@ exports.generateTimetable = async (req, res) => {
 
           let teacherFound = null;
           for (let teacher of sortedTeachers) {
-            if (canAssignTeacher(teacher, day, period, false, true)) {
+            // UPDATED: Pass className for daily limit check
+            if (canAssignTeacher(teacher, day, period, false, true, className)) {
               teacherFound = teacher;
               break;
             }
           }
 
           if (teacherFound) {
-            assignTeacher(teacherFound, day, period, false);
+            assignTeacher(teacherFound, day, period, false, className); // Pass className
             entry.teacher = teacherFound._id;
             filledCount++;
           }
         }
       }
 
-      // Emergency pass: force assign if slot is empty (should rarely happen)
       const remainingNulls = dailySchedule.filter(
         (e) => e.subject && !e.teacher && !e.isBreak
       );
@@ -677,13 +705,16 @@ exports.generateTimetable = async (req, res) => {
           const slotKey = `${day}_P${period}`;
           const tId = teacher._id.toString();
           
-          // Only check for hard conflicts, ignore hours limit
+          // Only check for hard conflicts, ignore hours limit but respect daily theory limit
           if (!globalTeacherAllocation[slotKey]?.includes(tId)) {
-            assignTeacher(teacher, day, period, false);
-            entry.teacher = teacher._id;
-            filledCount++;
-            console.log(`  ⚡ Emergency assign: ${day} P${period} → ${teacher.user?.username}`);
-            break;
+            // Check if teacher can take theory today
+            if (canTeachTheoryToday(tId, className, day)) {
+              assignTeacher(teacher, day, period, false, className);
+              entry.teacher = teacher._id;
+              filledCount++;
+              console.log(`  ⚡ Emergency assign: ${day} P${period} → ${teacher.user?.username}`);
+              break;
+            }
           }
         }
       }
@@ -731,7 +762,6 @@ exports.generateTimetable = async (req, res) => {
       console.log(`  Unfilled: ${nullTeachers}`);
     }
 
-    // Final verification: Check for any cross-class conflicts
     console.log(`\n🔍 Verifying no cross-class teacher conflicts...`);
     let conflictFound = false;
     const slotMap = {};
