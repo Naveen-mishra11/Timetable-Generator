@@ -5,6 +5,17 @@ import Footer from "../Footer";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
+// ✅ Define ALL periods (fixed)
+const ALL_PERIODS = [
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "P7",
+];
+
 const TeacherTimetable = () => {
   const [timetables, setTimetables] = useState({});
   const [loading, setLoading] = useState(true);
@@ -61,13 +72,6 @@ const TeacherTimetable = () => {
             classEntries.map(([className, daysObj]) => {
               const days = Object.keys(daysObj);
 
-              // collect unique periods
-              const timesSet = new Set();
-              Object.values(daysObj).forEach(slots =>
-                slots.forEach(s => timesSet.add(s.time))
-              );
-              const times = [...timesSet].sort();
-
               return (
                 <div key={className} className="mb-5">
                   <div className="card shadow-sm">
@@ -81,8 +85,8 @@ const TeacherTimetable = () => {
                           <thead className="table-success">
                             <tr>
                               <th>DAY / TIME</th>
-                              {times.map((t) => (
-                                <th key={t}>{t}</th>
+                              {ALL_PERIODS.map((time) => (
+                                <th key={time}>{time}</th>
                               ))}
                             </tr>
                           </thead>
@@ -92,7 +96,7 @@ const TeacherTimetable = () => {
                               <tr key={day}>
                                 <td className="fw-bold">{day}</td>
 
-                                {times.map((time) => {
+                                {ALL_PERIODS.map((time) => {
                                   const slot = daysObj[day].find(
                                     (s) => s.time === time
                                   );
@@ -105,11 +109,13 @@ const TeacherTimetable = () => {
                                           <div className="small text-muted">
                                             {slot.room}
                                           </div>
+
                                           {slot.substituteTeacher && (
                                             <div className="small text-success">
                                               Substitute: {slot.substituteTeacher}
                                             </div>
                                           )}
+
                                           {slot.substitutionStatus === "unassigned" && (
                                             <div className="small text-danger">
                                               Substitute: UNASSIGNED
