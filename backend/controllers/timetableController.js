@@ -26,14 +26,11 @@ exports.generateTimetable = async (req, res) => {
       return res.status(400).json({ error: "No teachers found" });
 
     // Global state tracking
-    let globalTeacherAllocation = {}; // { "Monday_P1": ["teacherId1"] }
-    let globalTeacherWeeklyHours = {}; // { "teacherId": hours }
-    // CRITICAL: Global consecutive tracking across ALL classes
-    let teacherDailyPeriods = {}; // { "teacherId_Monday": [1, 2, 3] } - periods taught that day
-    let teacherLastPeriodGlobal = {}; // { "teacherId_Monday": 3 } - last period taught
-    // Daily theory/lab tracking per class
-    let teacherDailyTheoryCount = {}; // { "teacherId_className_Monday": count }
-    let teacherDailyLabFlag = {}; // { "teacherId_className_Monday": boolean }
+    let globalTeacherAllocation = {};
+    let globalTeacherWeeklyHours = {};
+    let teacherDailyPeriods = {};
+    let teacherDailyTheoryCount = {};
+    let teacherDailyLabFlag = {};
 
     const isTeacherAvailable = (teacherId, day, period, isLab = false) => {
       const tId = teacherId.toString();
@@ -50,28 +47,27 @@ exports.generateTimetable = async (req, res) => {
 
       const currentHours = globalTeacherWeeklyHours[tId] || 0;
       const requiredHours = isLab ? 2 : 1;
-      if (currentHours + requiredHours > 17) {
+      if (currentHours + requiredHours > 20) {
         return { available: false, reason: "hours_limit" };
       }
 
       return { available: true, currentHours };
     };
 
-    // Check if teacher has gap after maxConsecutive periods (GLOBAL across all classes)
-    const hasRequiredBreak = (teacher, day, period, maxConsecutive = 2) => {
+    const canTeachAtPeriod = (teacher, day, period, maxConsecutive = 2) => {
       const tId = teacher._id.toString();
       const dayKey = `${tId}_${day}`;
       const periodsTaught = teacherDailyPeriods[dayKey] || [];
       
-      // If teacher hasn't taught today, no issue
       if (periodsTaught.length === 0) return true;
       
-      // Sort periods to find consecutive sequences
       const sortedPeriods = [...periodsTaught].sort((a, b) => a - b);
-      const lastPeriod = sortedPeriods[sortedPeriods.length - 1];
+      const lastTaught = sortedPeriods[sortedPeriods.length - 1];
       
-      // Check if adding this period would exceed maxConsecutive
-      // Count consecutive periods ending at the last taught period
+      if (period !== lastTaught + 1) {
+        return true;
+      }
+      
       let consecutiveCount = 1;
       for (let i = sortedPeriods.length - 2; i >= 0; i--) {
         if (sortedPeriods[i] === sortedPeriods[i + 1] - 1) {
@@ -81,18 +77,9 @@ exports.generateTimetable = async (req, res) => {
         }
       }
       
-      // If we have maxConsecutive consecutive, next period must have a gap
-      if (consecutiveCount >= maxConsecutive) {
-        // Must have at least 1 period gap
-        if (period === lastPeriod + 1) {
-          return false; // No break, would be 3rd+ consecutive
-        }
-      }
-      
-      return true;
+      return consecutiveCount < maxConsecutive;
     };
 
-    // Check daily theory limit for teacher in specific class
     const canTeachTheoryToday = (teacherId, className, day) => {
       const tId = teacherId.toString();
       const theoryKey = `${tId}_${className}_${day}`;
@@ -101,8 +88,6 @@ exports.generateTimetable = async (req, res) => {
       const theoryCount = teacherDailyTheoryCount[theoryKey] || 0;
       const taughtLabToday = teacherDailyLabFlag[labKey] || false;
       
-      // If taught lab today, max 1 theory period
-      // If no lab today, max 2 theory periods
       const maxTheoryAllowed = taughtLabToday ? 1 : 2;
       
       return theoryCount < maxTheoryAllowed;
@@ -113,7 +98,6 @@ exports.generateTimetable = async (req, res) => {
       day,
       period,
       isLab = false,
-      relaxConsecutive = false,
       className = null
     ) => {
       const tId = teacher._id.toString();
@@ -121,27 +105,21 @@ exports.generateTimetable = async (req, res) => {
       
       if (!availability.available) return false;
 
-      // Check daily theory limit for this class
       if (!isLab && className) {
         if (!canTeachTheoryToday(tId, className, day)) {
           return false;
         }
       }
 
-      // CRITICAL: Global consecutive check across ALL classes
-      if (!relaxConsecutive) {
-        const maxConsecutive = teacher.maxConsecutive || 2;
-        
-        // Check if this assignment would violate global consecutive rule
-        if (!hasRequiredBreak(teacher, day, period, maxConsecutive)) {
+      const maxConsecutive = teacher.maxConsecutive || 2;
+      
+      if (!canTeachAtPeriod(teacher, day, period, maxConsecutive)) {
+        return false;
+      }
+      
+      if (isLab) {
+        if (!canTeachAtPeriod(teacher, day, period + 1, maxConsecutive)) {
           return false;
-        }
-        
-        // Also check for lab (takes 2 periods)
-        if (isLab) {
-          if (!hasRequiredBreak(teacher, day, period + 1, maxConsecutive)) {
-            return false;
-          }
         }
       }
 
@@ -154,32 +132,25 @@ exports.generateTimetable = async (req, res) => {
       const nextSlotKey = `${day}_P${period + 1}`;
       const dayKey = `${tId}_${day}`;
 
-      // Mark allocation
       if (!globalTeacherAllocation[slotKey])
         globalTeacherAllocation[slotKey] = [];
       globalTeacherAllocation[slotKey].push(tId);
 
-      // Track periods taught globally
       if (!teacherDailyPeriods[dayKey]) teacherDailyPeriods[dayKey] = [];
       teacherDailyPeriods[dayKey].push(period);
-      teacherLastPeriodGlobal[dayKey] = period;
 
       if (isLab) {
         if (!globalTeacherAllocation[nextSlotKey])
           globalTeacherAllocation[nextSlotKey] = [];
         globalTeacherAllocation[nextSlotKey].push(tId);
         
-        // Track second period for lab
         teacherDailyPeriods[dayKey].push(period + 1);
-        teacherLastPeriodGlobal[dayKey] = period + 1;
         
-        // Mark lab flag for this class
         if (className) {
           const labFlagKey = `${tId}_${className}_${day}`;
           teacherDailyLabFlag[labFlagKey] = true;
         }
       } else {
-        // Increment theory count for this class
         if (className) {
           const theoryKey = `${tId}_${className}_${day}`;
           teacherDailyTheoryCount[theoryKey] = (teacherDailyTheoryCount[theoryKey] || 0) + 1;
@@ -195,7 +166,6 @@ exports.generateTimetable = async (req, res) => {
       const tId = teacher._id.toString();
       const slotKey = `${day}_P${period}`;
       const nextSlotKey = `${day}_P${period + 1}`;
-      const dayKey = `${tId}_${day}`;
 
       if (globalTeacherAllocation[slotKey]) {
         globalTeacherAllocation[slotKey] = globalTeacherAllocation[slotKey].filter(id => id !== tId);
@@ -204,24 +174,17 @@ exports.generateTimetable = async (req, res) => {
         globalTeacherAllocation[nextSlotKey] = globalTeacherAllocation[nextSlotKey].filter(id => id !== tId);
       }
 
-      // Remove from global period tracking
+      const dayKey = `${tId}_${day}`;
       if (teacherDailyPeriods[dayKey]) {
         teacherDailyPeriods[dayKey] = teacherDailyPeriods[dayKey].filter(p => p !== period);
         if (isLab) {
           teacherDailyPeriods[dayKey] = teacherDailyPeriods[dayKey].filter(p => p !== period + 1);
-        }
-        // Update last period
-        if (teacherDailyPeriods[dayKey].length > 0) {
-          teacherLastPeriodGlobal[dayKey] = Math.max(...teacherDailyPeriods[dayKey]);
-        } else {
-          teacherLastPeriodGlobal[dayKey] = null;
         }
       }
 
       const requiredHours = isLab ? 2 : 1;
       globalTeacherWeeklyHours[tId] = Math.max(0, (globalTeacherWeeklyHours[tId] || 0) - requiredHours);
       
-      // Decrement tracking
       if (isLab && className) {
         const labFlagKey = `${tId}_${className}_${day}`;
         teacherDailyLabFlag[labFlagKey] = false;
@@ -235,37 +198,15 @@ exports.generateTimetable = async (req, res) => {
       return globalTeacherWeeklyHours[teacher._id.toString()] || 0;
     };
 
-    // Check if teacher needs a break (has taught maxConsecutive periods)
-    const teacherNeedsBreak = (teacher, day, maxConsecutive = 2) => {
-      const tId = teacher._id.toString();
-      const dayKey = `${tId}_${day}`;
-      const periods = teacherDailyPeriods[dayKey] || [];
-      
-      if (periods.length < maxConsecutive) return false;
-      
-      const sorted = [...periods].sort((a, b) => a - b);
-      let consecutive = 1;
-      for (let i = sorted.length - 1; i > 0; i--) {
-        if (sorted[i] === sorted[i - 1] + 1) {
-          consecutive++;
-          if (consecutive >= maxConsecutive) return true;
-        } else {
-          break;
-        }
-      }
-      return false;
-    };
-
     const findBestTeacher = (
       subject,
       day,
       period,
       isLab,
-      lastTeacherId,
       allTeachers,
       className,
       preferredTeacher = null,
-      avoidTeachers = new Set()
+      excludeTeachers = new Set()
     ) => {
       const subjectId = subject._id.toString();
       
@@ -273,12 +214,11 @@ exports.generateTimetable = async (req, res) => {
         (t) =>
           t.subjects.some((s) => s._id.toString() === subjectId) &&
           t.teachingType.includes(isLab ? "lab" : "theory") &&
-          !avoidTeachers.has(t._id.toString())
+          !excludeTeachers.has(t._id.toString())
       );
 
       if (!qualifiedTeachers.length) return null;
 
-      // Filter available teachers with ALL constraints
       const availableTeachers = qualifiedTeachers.filter(t => {
         const availability = isTeacherAvailable(t._id, day, period, isLab);
         if (!availability.available) return false;
@@ -287,419 +227,388 @@ exports.generateTimetable = async (req, res) => {
           if (!canTeachTheoryToday(t._id, className, day)) return false;
         }
         
-        // Check global consecutive constraint
         const maxConsecutive = t.maxConsecutive || 2;
-        if (!hasRequiredBreak(t, day, period, maxConsecutive)) return false;
-        if (isLab && !hasRequiredBreak(t, day, period + 1, maxConsecutive)) return false;
+        if (!canTeachAtPeriod(t, day, period, maxConsecutive)) return false;
+        if (isLab && !canTeachAtPeriod(t, day, period + 1, maxConsecutive)) return false;
         
         return true;
       });
 
-      if (!availableTeachers.length) {
-        console.log(`    ⚠️ No available teachers for ${subject.name} at ${day} P${period}`);
-        return null;
-      }
+      if (!availableTeachers.length) return null;
 
-      // Prefer teachers who don't need a break yet
-      const sortedByPriority = availableTeachers.sort((a, b) => {
-        const aNeedsBreak = teacherNeedsBreak(a, day, a.maxConsecutive || 2);
-        const bNeedsBreak = teacherNeedsBreak(b, day, b.maxConsecutive || 2);
-        
-        if (aNeedsBreak && !bNeedsBreak) return 1;
-        if (!aNeedsBreak && bNeedsBreak) return -1;
-        
-        // Both same break status, sort by load
+      const sortedByLoad = availableTeachers.sort((a, b) => {
         return getTeacherLoadScore(a) - getTeacherLoadScore(b);
       });
 
       if (preferredTeacher) {
-        const preferred = sortedByPriority.find(
+        const preferred = sortedByLoad.find(
           (t) => t._id.toString() === preferredTeacher.toString()
         );
-        if (preferred && (!lastTeacherId || lastTeacherId.toString() !== preferred._id.toString())) {
-          return preferred;
+        if (preferred) return preferred;
+      }
+
+      return sortedByLoad[0] || null;
+    };
+
+    // Initialize class schedules structure
+    const initializeClassSchedules = () => {
+      const schedules = {};
+      classes.forEach(cls => {
+        schedules[cls.name] = {
+          classObj: cls,
+          schedule: [],
+          subjectTeacherMap: {},
+          labScheduleMap: [],
+          labsScheduledThisWeek: new Set(),
+          theorySubjectFrequency: {},
+          room: `Room-${Math.floor(Math.random() * 300) + 100}`
+        };
+      });
+      return schedules;
+    };
+
+    // Build subject-teacher mapping for all classes
+    const buildSubjectTeacherMaps = (classSchedules) => {
+      for (const className in classSchedules) {
+        const cls = classSchedules[className].classObj;
+        const classSubjects = cls.subjects;
+        const subjectsByName = {};
+
+        for (let subject of classSubjects) {
+          const subjectName = subject.name
+            .trim()
+            .toLowerCase()
+            .replace(/\s*lab\s*$/i, "")
+            .trim();
+          if (!subjectsByName[subjectName]) subjectsByName[subjectName] = [];
+          subjectsByName[subjectName].push(subject);
         }
-      }
 
-      // Avoid same teacher as last period in this class
-      for (let teacher of sortedByPriority) {
-        if (lastTeacherId && lastTeacherId.toString() === teacher._id.toString()) continue;
-        return teacher;
-      }
+        for (let subjectName in subjectsByName) {
+          const subjects = subjectsByName[subjectName];
+          const hasLab = subjects.some((s) => s.type === "lab");
+          const hasTheory = subjects.some((s) => s.type === "theory");
 
-      // If no alternative, allow same teacher
-      return sortedByPriority[0] || null;
-    };
-
-    const calculateClassRequirements = (cls) => {
-      let totalHours = 0;
-      const labSubjects = cls.subjects.filter(s => s.type === 'lab');
-      const theorySubjects = cls.subjects.filter(s => s.type === 'theory');
-      
-      labSubjects.forEach(sub => {
-        totalHours += (sub.hoursPerWeek || 2);
-      });
-      theorySubjects.forEach(sub => {
-        totalHours += (sub.hoursPerWeek || 4);
-      });
-      
-      return { totalHours, labCount: labSubjects.length, theoryCount: theorySubjects.length };
-    };
-
-    const sortedClasses = [...classes].sort((a, b) => {
-      const reqA = calculateClassRequirements(a);
-      const reqB = calculateClassRequirements(b);
-      if (reqB.labCount !== reqA.labCount) return reqB.labCount - reqA.labCount;
-      return reqB.totalHours - reqA.totalHours;
-    });
-
-    let allTimetables = [];
-
-    for (let cls of sortedClasses) {
-      const className = cls.name;
-      const classSubjects = cls.subjects;
-
-      console.log(`\n📚 Processing ${className}...`);
-
-      let subjectTeacherMap = {};
-      const subjectsByName = {};
-
-      for (let subject of classSubjects) {
-        const subjectName = subject.name
-          .trim()
-          .toLowerCase()
-          .replace(/\s*lab\s*$/i, "")
-          .trim();
-        if (!subjectsByName[subjectName]) subjectsByName[subjectName] = [];
-        subjectsByName[subjectName].push(subject);
-      }
-
-      for (let subjectName in subjectsByName) {
-        const subjects = subjectsByName[subjectName];
-        const hasLab = subjects.some((s) => s.type === "lab");
-        const hasTheory = subjects.some((s) => s.type === "theory");
-
-        const candidateTeachers = teachers.filter((t) => {
-          const canTeachAll = subjects.every((sub) =>
-            t.subjects.some((ts) => ts._id.toString() === sub._id.toString())
-          );
-
-          let hasRequiredTypes = true;
-          if (hasLab && !t.teachingType.includes("lab"))
-            hasRequiredTypes = false;
-          if (hasTheory && !t.teachingType.includes("theory"))
-            hasRequiredTypes = false;
-
-          return canTeachAll && hasRequiredTypes;
-        });
-
-        if (candidateTeachers.length > 0) {
-          const chosen = candidateTeachers.sort((a, b) => 
-            getTeacherLoadScore(a) - getTeacherLoadScore(b)
-          )[0];
-          
-          for (let sub of subjects) {
-            subjectTeacherMap[sub._id.toString()] = chosen;
-          }
-        } else {
-          for (let sub of subjects) {
-            const fallbackTeachers = teachers.filter(
-              (t) =>
-                t.subjects.some(
-                  (ts) => ts._id.toString() === sub._id.toString()
-                ) && t.teachingType.includes(sub.type)
+          const candidateTeachers = teachers.filter((t) => {
+            const canTeachAll = subjects.every((sub) =>
+              t.subjects.some((ts) => ts._id.toString() === sub._id.toString())
             );
-            if (fallbackTeachers.length > 0) {
-              subjectTeacherMap[sub._id.toString()] = fallbackTeachers.sort((a, b) => 
-                getTeacherLoadScore(a) - getTeacherLoadScore(b)
-              )[0];
+
+            let hasRequiredTypes = true;
+            if (hasLab && !t.teachingType.includes("lab"))
+              hasRequiredTypes = false;
+            if (hasTheory && !t.teachingType.includes("theory"))
+              hasRequiredTypes = false;
+
+            return canTeachAll && hasRequiredTypes;
+          });
+
+          if (candidateTeachers.length > 0) {
+            const chosen = candidateTeachers.sort((a, b) => 
+              getTeacherLoadScore(a) - getTeacherLoadScore(b)
+            )[0];
+            
+            for (let sub of subjects) {
+              classSchedules[className].subjectTeacherMap[sub._id.toString()] = chosen;
+            }
+          } else {
+            for (let sub of subjects) {
+              const fallbackTeachers = teachers.filter(
+                (t) =>
+                  t.subjects.some(
+                    (ts) => ts._id.toString() === sub._id.toString()
+                  ) && t.teachingType.includes(sub.type)
+              );
+              if (fallbackTeachers.length > 0) {
+                classSchedules[className].subjectTeacherMap[sub._id.toString()] = 
+                  fallbackTeachers.sort((a, b) => getTeacherLoadScore(a) - getTeacherLoadScore(b))[0];
+              }
             }
           }
         }
-      }
 
-      console.log(`👩‍🏫 Teacher assignment for ${className}:`);
-      for (let [subId, teacher] of Object.entries(subjectTeacherMap)) {
-        const sub = classSubjects.find((s) => s._id.toString() === subId);
-        if (sub && teacher && teacher.user) {
-          console.log(`  ${sub.name} → ${teacher.user.username} (${getTeacherLoadScore(teacher)}h)`);
-        }
-      }
-
-      let labScheduleMap = [];
-      const labSubjects = cls.subjects.filter((sub) => sub.type === "lab");
-      let labsScheduledThisWeek = new Set();
-
-      const scheduleLabs = () => {
-        labScheduleMap.forEach(lab => {
-          unassignTeacher(lab.teacher, lab.day, lab.period, true, className);
+        // Initialize theory subject frequencies
+        const theorySubjects = cls.subjects.filter(s => s.type === "theory");
+        theorySubjects.forEach(sub => {
+          classSchedules[className].theorySubjectFrequency[sub._id.toString()] = 0;
         });
-        labScheduleMap = [];
-        labsScheduledThisWeek.clear();
+      }
+    };
 
-        const shuffledDays = [...days].sort(() => Math.random() - 0.5);
-        
-        for (let day of shuffledDays) {
-          if (labsScheduledThisWeek.size >= labSubjects.length) break;
+    // Schedule labs simultaneously across all classes
+    const scheduleAllLabs = (classSchedules) => {
+      const shuffledDays = [...days].sort(() => Math.random() - 0.5);
+      
+      for (let day of shuffledDays) {
+        // Try to schedule one lab per class per day (round-robin)
+        let classesNeedingLabs = Object.entries(classSchedules).filter(([name, data]) => {
+          const labSubjects = data.classObj.subjects.filter(s => s.type === "lab");
+          return data.labsScheduledThisWeek.size < labSubjects.length;
+        });
 
-          let labScheduledToday = false;
+        // Shuffle classes for fairness
+        classesNeedingLabs.sort(() => Math.random() - 0.5);
+
+        for (const [className, classData] of classesNeedingLabs) {
+          const labSubjects = classData.classObj.subjects.filter(s => 
+            s.type === "lab" && !classData.labsScheduledThisWeek.has(s._id.toString())
+          );
+          
+          if (labSubjects.length === 0) continue;
+
           const possiblePeriods = [];
           for (let p = 1; p <= periodsPerDay - 1; p++) {
             if (lunchBreakAfter && p === lunchBreakAfter) continue;
-            possiblePeriods.push(p);
+            // Check if this period is already occupied in this class
+            const occupied = classData.schedule.some(e => e.day === day && e.time === `P${p}`);
+            if (!occupied) possiblePeriods.push(p);
           }
-          
+
           const shuffledPeriods = possiblePeriods.sort(() => Math.random() - 0.5);
 
           for (let p of shuffledPeriods) {
-            if (labScheduledToday || labsScheduledThisWeek.size >= labSubjects.length) break;
-
-            const availableLabs = labSubjects.filter(
-              (lab) => !labsScheduledThisWeek.has(lab._id.toString())
-            );
-            if (availableLabs.length === 0) break;
-
-            for (let labSubject of availableLabs) {
-              const primaryTeacher = subjectTeacherMap[labSubject._id.toString()];
-              
-              let selectedTeacher = null;
-              
-              if (primaryTeacher) {
-                const avail = isTeacherAvailable(primaryTeacher._id, day, p, true);
-                const maxConsecutive = primaryTeacher.maxConsecutive || 2;
-                if (avail.available && hasRequiredBreak(primaryTeacher, day, p, maxConsecutive) && hasRequiredBreak(primaryTeacher, day, p + 1, maxConsecutive)) {
-                  selectedTeacher = primaryTeacher;
-                }
-              }
-              
-              if (!selectedTeacher) {
-                selectedTeacher = findBestTeacher(
-                  labSubject,
-                  day,
-                  p,
-                  true,
-                  null,
-                  teachers,
-                  className
-                );
-              }
-
-              if (selectedTeacher) {
-                assignTeacher(selectedTeacher, day, p, true, className);
-                labsScheduledThisWeek.add(labSubject._id.toString());
-                labScheduledToday = true;
-
-                labScheduleMap.push({
-                  day,
-                  period: p,
-                  subject: labSubject,
-                  teacher: selectedTeacher,
-                });
-                break;
-              }
-            }
-          }
-        }
-        
-        return labsScheduledThisWeek.size === labSubjects.length;
-      };
-
-      let labsFullyScheduled = false;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (scheduleLabs()) {
-          labsFullyScheduled = true;
-          break;
-        }
-      }
-
-      if (!labsFullyScheduled) {
-        console.log(`  ⚠️ Warning: Could not schedule all labs for ${className}`);
-      }
-
-      const classRoom = `Room-${Math.floor(Math.random() * 300) + 100}`;
-      let dailySchedule = [];
-      let theorySubjectFrequency = {};
-
-      for (let lab of labScheduleMap) {
-        const { day, period, subject, teacher } = lab;
-        const labRoom = `Lab-${Math.floor(Math.random() * 20) + 1}`;
-        dailySchedule.push({
-          day,
-          time: `P${period}`,
-          subject: subject._id,
-          teacher: teacher._id,
-          room: labRoom,
-        });
-        dailySchedule.push({
-          day,
-          time: `P${period + 1}`,
-          subject: subject._id,
-          teacher: teacher._id,
-          room: labRoom,
-        });
-      }
-
-      const theorySubjects = cls.subjects.filter(
-        (sub) => sub.type === "theory"
-      );
-
-      theorySubjects.forEach(sub => {
-        theorySubjectFrequency[sub._id.toString()] = 0;
-      });
-
-      const getSubjectPriority = (sub) => {
-        const current = theorySubjectFrequency[sub._id.toString()] || 0;
-        const max = sub.hoursPerWeek || 4;
-        return max - current;
-      };
-
-      for (let day of days) {
-        let lastSubject = null;
-        let lastTeacher = null;
-
-        for (let p = 1; p <= periodsPerDay; p++) {
-          if (lunchBreakAfter && p === lunchBreakAfter) {
-            dailySchedule.push({
-              day,
-              time: `LUNCH`,
-              subject: "LUNCH BREAK",
-              teacher: null,
-              room: "Cafeteria",
-              isBreak: true,
-            });
-            continue;
-          }
-
-          const slotOccupied = dailySchedule.some(
-            (e) => e.day === day && e.time === `P${p}`
-          );
-          if (slotOccupied) {
-            const occupiedSlot = dailySchedule.find(
-              (e) => e.day === day && e.time === `P${p}`
-            );
-            if (occupiedSlot && !occupiedSlot.isBreak) {
-              lastSubject = occupiedSlot.subject;
-              lastTeacher = occupiedSlot.teacher;
-            }
-            continue;
-          }
-
-          const sortedSubjects = [...theorySubjects].sort((a, b) => 
-            getSubjectPriority(b) - getSubjectPriority(a)
-          );
-
-          let availableTheory = sortedSubjects.filter((sub) => {
-            const count = theorySubjectFrequency[sub._id.toString()] || 0;
-            const maxHours = sub.hoursPerWeek || 4;
-            return count < maxHours && sub._id.toString() !== lastSubject?.toString();
-          });
-
-          if (!availableTheory.length) {
-            availableTheory = sortedSubjects.filter((sub) => {
-              const count = theorySubjectFrequency[sub._id.toString()] || 0;
-              const maxHours = sub.hoursPerWeek || 4;
-              return count < maxHours;
-            });
-          }
-
-          if (!availableTheory.length) {
-            dailySchedule.push({
-              day,
-              time: `P${p}`,
-              subject: null,
-              teacher: null,
-              room: classRoom,
-            });
-            continue;
-          }
-
-          let assigned = false;
-          for (let selectedSubject of availableTheory) {
-            const primaryTeacher = subjectTeacherMap[selectedSubject._id.toString()];
+            const labSubject = labSubjects[0]; // Take first available lab
+            const primaryTeacher = classData.subjectTeacherMap[labSubject._id.toString()];
             
             let selectedTeacher = null;
             
             if (primaryTeacher) {
-              const avail = isTeacherAvailable(primaryTeacher._id, day, p, false);
-              const canTakeTheory = canTeachTheoryToday(primaryTeacher._id, className, day);
+              const avail = isTeacherAvailable(primaryTeacher._id, day, p, true);
               const maxConsecutive = primaryTeacher.maxConsecutive || 2;
-              const hasBreak = hasRequiredBreak(primaryTeacher, day, p, maxConsecutive);
-              
-              if (avail.available && canTakeTheory && hasBreak && (!lastTeacher || lastTeacher.toString() !== primaryTeacher._id.toString())) {
+              if (avail.available && 
+                  canTeachAtPeriod(primaryTeacher, day, p, maxConsecutive) && 
+                  canTeachAtPeriod(primaryTeacher, day, p + 1, maxConsecutive)) {
                 selectedTeacher = primaryTeacher;
               }
             }
-            
+
             if (!selectedTeacher) {
               selectedTeacher = findBestTeacher(
-                selectedSubject,
+                labSubject,
                 day,
                 p,
-                false,
-                lastTeacher,
+                true,
                 teachers,
                 className
               );
             }
 
             if (selectedTeacher) {
-              assignTeacher(selectedTeacher, day, p, false, className);
-              lastTeacher = selectedTeacher._id;
-              lastSubject = selectedSubject._id;
-              
-              theorySubjectFrequency[selectedSubject._id.toString()] =
-                (theorySubjectFrequency[selectedSubject._id.toString()] || 0) + 1;
+              assignTeacher(selectedTeacher, day, p, true, className);
+              classData.labsScheduledThisWeek.add(labSubject._id.toString());
 
-              dailySchedule.push({
+              const labRoom = `Lab-${Math.floor(Math.random() * 20) + 1}`;
+              classData.schedule.push({
                 day,
                 time: `P${p}`,
-                subject: selectedSubject._id,
+                subject: labSubject._id,
                 teacher: selectedTeacher._id,
-                room: classRoom,
+                room: labRoom,
               });
-              assigned = true;
-              break;
-            }
-          }
+              classData.schedule.push({
+                day,
+                time: `P${p + 1}`,
+                subject: labSubject._id,
+                teacher: selectedTeacher._id,
+                room: labRoom,
+              });
 
-          if (!assigned) {
-            dailySchedule.push({
-              day,
-              time: `P${p}`,
-              subject: null,
-              teacher: null,
-              room: classRoom,
-            });
+              classData.labScheduleMap.push({
+                day,
+                period: p,
+                subject: labSubject,
+                teacher: selectedTeacher,
+              });
+              break; // Move to next class
+            }
           }
         }
       }
+    };
 
-      console.log(`\n🔧 Smart filling for ${className}...`);
-      let filledCount = 0;
+    // Schedule theory periods simultaneously across all classes
+    const scheduleAllTheory = (classSchedules) => {
+      for (let day of days) {
+        for (let p = 1; p <= periodsPerDay; p++) {
+          // Handle lunch break
+          if (lunchBreakAfter && p === lunchBreakAfter) {
+            for (const className in classSchedules) {
+              classSchedules[className].schedule.push({
+                day,
+                time: `LUNCH`,
+                subject: "LUNCH BREAK",
+                teacher: null,
+                room: "Cafeteria",
+                isBreak: true,
+              });
+            }
+            continue;
+          }
 
-      for (let pass = 0; pass < 5; pass++) {
-        const nullEntries = dailySchedule.filter(
-          (e) => 
-            !e.teacher && 
-            e.subject && 
-            !e.isBreak
-        );
-
-        for (let entry of nullEntries) {
-          const day = entry.day;
-          const period = parseInt(entry.time.replace("P", ""));
-          const subjectId = entry.subject.toString();
-
-          let lastTeacherId = null;
-          const dayEntries = dailySchedule.filter(e => e.day === day);
-          const entryIndex = dayEntries.findIndex(e => e.time === entry.time);
-          for (let i = entryIndex - 1; i >= 0; i--) {
-            if (dayEntries[i].teacher) {
-              lastTeacherId = dayEntries[i].teacher;
-              break;
+          // Get classes that need scheduling for this slot
+          let classesForThisSlot = [];
+          for (const [className, classData] of Object.entries(classSchedules)) {
+            // Check if slot already occupied (by lab)
+            const occupied = classData.schedule.some(e => e.day === day && e.time === `P${p}`);
+            if (!occupied) {
+              classesForThisSlot.push({ className, classData });
             }
           }
 
+          // Shuffle for fairness
+          classesForThisSlot.sort(() => Math.random() - 0.5);
+
+          for (const { className, classData } of classesForThisSlot) {
+            const theorySubjects = classData.classObj.subjects.filter(s => s.type === "theory");
+            
+            // Get priority sorted subjects
+            const sortedSubjects = [...theorySubjects].sort((a, b) => {
+              const countA = classData.theorySubjectFrequency[a._id.toString()] || 0;
+              const countB = classData.theorySubjectFrequency[b._id.toString()] || 0;
+              const maxA = a.hoursPerWeek || 4;
+              const maxB = b.hoursPerWeek || 4;
+              return (maxB - countB) - (maxA - countA);
+            });
+
+            // Filter available subjects
+            let availableSubjects = sortedSubjects.filter(sub => {
+              const count = classData.theorySubjectFrequency[sub._id.toString()] || 0;
+              const max = sub.hoursPerWeek || 4;
+              return count < max;
+            });
+
+            if (availableSubjects.length === 0) {
+              classData.schedule.push({
+                day,
+                time: `P${p}`,
+                subject: null,
+                teacher: null,
+                room: classData.room,
+              });
+              continue;
+            }
+
+            let assigned = false;
+            for (let selectedSubject of availableSubjects) {
+              const primaryTeacher = classData.subjectTeacherMap[selectedSubject._id.toString()];
+              
+              let selectedTeacher = null;
+              
+              if (primaryTeacher) {
+                const avail = isTeacherAvailable(primaryTeacher._id, day, p, false);
+                const canTakeTheory = canTeachTheoryToday(primaryTeacher._id, className, day);
+                const maxConsecutive = primaryTeacher.maxConsecutive || 2;
+                const canTeach = canTeachAtPeriod(primaryTeacher, day, p, maxConsecutive);
+                
+                if (avail.available && canTakeTheory && canTeach) {
+                  selectedTeacher = primaryTeacher;
+                }
+              }
+
+              if (!selectedTeacher) {
+                selectedTeacher = findBestTeacher(
+                  selectedSubject,
+                  day,
+                  p,
+                  false,
+                  teachers,
+                  className
+                );
+              }
+
+              if (selectedTeacher) {
+                assignTeacher(selectedTeacher, day, p, false, className);
+                
+                classData.theorySubjectFrequency[selectedSubject._id.toString()] =
+                  (classData.theorySubjectFrequency[selectedSubject._id.toString()] || 0) + 1;
+
+                classData.schedule.push({
+                  day,
+                  time: `P${p}`,
+                  subject: selectedSubject._id,
+                  teacher: selectedTeacher._id,
+                  room: classData.room,
+                });
+                assigned = true;
+                break;
+              }
+            }
+
+            if (!assigned) {
+              classData.schedule.push({
+                day,
+                time: `P${p}`,
+                subject: null,
+                teacher: null,
+                room: classData.room,
+              });
+            }
+          }
+        }
+      }
+    };
+
+    // Smart filling for remaining slots
+    const fillRemainingSlots = (classSchedules) => {
+      for (const [className, classData] of Object.entries(classSchedules)) {
+        console.log(`\n🔧 Smart filling for ${className}...`);
+        let filledCount = 0;
+
+        const classSubjects = classData.classObj.subjects;
+
+        for (let pass = 0; pass < 5; pass++) {
+          const nullEntries = classData.schedule.filter(
+            (e) => !e.teacher && e.subject && !e.isBreak
+          );
+
+          for (let entry of nullEntries) {
+            const day = entry.day;
+            const period = parseInt(entry.time.replace("P", ""));
+            const subjectId = entry.subject.toString();
+
+            const subject = classSubjects.find(
+              (s) => s._id.toString() === subjectId
+            );
+            if (!subject) continue;
+
+            const qualifiedTeachers = teachers.filter(
+              (t) =>
+                t.subjects.some((s) => s._id.toString() === subjectId) &&
+                t.teachingType.includes(subject.type === 'lab' ? "lab" : "theory")
+            );
+
+            const sortedTeachers = qualifiedTeachers.sort((a, b) => {
+              const hoursA = globalTeacherWeeklyHours[a._id.toString()] || 0;
+              const hoursB = globalTeacherWeeklyHours[b._id.toString()] || 0;
+              return hoursA - hoursB;
+            });
+
+            let teacherFound = null;
+            for (let teacher of sortedTeachers) {
+              if (canAssignTeacher(teacher, day, period, false, className)) {
+                teacherFound = teacher;
+                break;
+              }
+            }
+
+            if (teacherFound) {
+              assignTeacher(teacherFound, day, period, false, className);
+              entry.teacher = teacherFound._id;
+              filledCount++;
+            }
+          }
+        }
+
+        // Emergency fill
+        const remainingNulls = classData.schedule.filter(
+          (e) => e.subject && !e.teacher && !e.isBreak
+        );
+
+        for (let entry of remainingNulls) {
+          const day = entry.day;
+          const period = parseInt(entry.time.replace("P", ""));
+          const subjectId = entry.subject.toString();
+          
           const subject = classSubjects.find(
             (s) => s._id.toString() === subjectId
           );
@@ -711,75 +620,56 @@ exports.generateTimetable = async (req, res) => {
               t.teachingType.includes(subject.type === 'lab' ? "lab" : "theory")
           );
 
-          const sortedTeachers = qualifiedTeachers.sort((a, b) => {
-            const hoursA = globalTeacherWeeklyHours[a._id.toString()] || 0;
-            const hoursB = globalTeacherWeeklyHours[b._id.toString()] || 0;
-            return hoursA - hoursB;
-          });
-
-          let teacherFound = null;
-          for (let teacher of sortedTeachers) {
-            if (canAssignTeacher(teacher, day, period, false, true, className)) {
-              teacherFound = teacher;
-              break;
-            }
-          }
-
-          if (teacherFound) {
-            assignTeacher(teacherFound, day, period, false, className);
-            entry.teacher = teacherFound._id;
-            filledCount++;
-          }
-        }
-      }
-
-      const remainingNulls = dailySchedule.filter(
-        (e) => e.subject && !e.teacher && !e.isBreak
-      );
-
-      for (let entry of remainingNulls) {
-        const day = entry.day;
-        const period = parseInt(entry.time.replace("P", ""));
-        const subjectId = entry.subject.toString();
-        
-        const subject = classSubjects.find(
-          (s) => s._id.toString() === subjectId
-        );
-        if (!subject) continue;
-
-        const qualifiedTeachers = teachers.filter(
-          (t) =>
-            t.subjects.some((s) => s._id.toString() === subjectId) &&
-            t.teachingType.includes(subject.type === 'lab' ? "lab" : "theory")
-        );
-
-        for (let teacher of qualifiedTeachers) {
-          const slotKey = `${day}_P${period}`;
-          const tId = teacher._id.toString();
-          
-          if (!globalTeacherAllocation[slotKey]?.includes(tId)) {
-            if (canTeachTheoryToday(tId, className, day)) {
-              assignTeacher(teacher, day, period, false, className);
-              entry.teacher = teacher._id;
-              filledCount++;
-              console.log(`  ⚡ Emergency assign: ${day} P${period} → ${teacher.user?.username}`);
-              break;
+          for (let teacher of qualifiedTeachers) {
+            const slotKey = `${day}_P${period}`;
+            const tId = teacher._id.toString();
+            
+            if (!globalTeacherAllocation[slotKey]?.includes(tId)) {
+              if (canTeachTheoryToday(tId, className, day)) {
+                const maxConsecutive = teacher.maxConsecutive || 2;
+                if (canTeachAtPeriod(teacher, day, period, maxConsecutive)) {
+                  assignTeacher(teacher, day, period, false, className);
+                  entry.teacher = teacher._id;
+                  filledCount++;
+                  console.log(`  ⚡ Emergency assign: ${day} P${period} → ${teacher.user?.username}`);
+                  break;
+                }
+              }
             }
           }
         }
+
+        console.log(`  📊 Filled ${filledCount} slots`);
       }
+    };
 
-      console.log(`  📊 Filled ${filledCount} slots`);
+    // Main execution
+    const classSchedules = initializeClassSchedules();
+    buildSubjectTeacherMaps(classSchedules);
+    
+    console.log("🔬 Scheduling labs simultaneously...");
+    scheduleAllLabs(classSchedules);
+    
+    console.log("📖 Scheduling theory periods simultaneously...");
+    scheduleAllTheory(classSchedules);
+    
+    console.log("🔧 Filling remaining slots...");
+    fillRemainingSlots(classSchedules);
 
-      const dayOrder = {
-        Monday: 1,
-        Tuesday: 2,
-        Wednesday: 3,
-        Thursday: 4,
-        Friday: 5,
-        Saturday: 6,
-      };
-      dailySchedule.sort((a, b) => {
+    // Save all timetables
+    let allTimetables = [];
+    const dayOrder = {
+      Monday: 1,
+      Tuesday: 2,
+      Wednesday: 3,
+      Thursday: 4,
+      Friday: 5,
+      Saturday: 6,
+    };
+
+    for (const [className, classData] of Object.entries(classSchedules)) {
+      // Sort schedule
+      classData.schedule.sort((a, b) => {
         const dayDiff = dayOrder[a.day] - dayOrder[b.day];
         if (dayDiff !== 0) return dayDiff;
         const getPeriodNum = (t) =>
@@ -790,28 +680,27 @@ exports.generateTimetable = async (req, res) => {
       await Timetable.deleteMany({ className });
       const newTimetable = new Timetable({
         className,
-        schedule: dailySchedule,
+        schedule: classData.schedule,
         lunchAfter: lunchBreakAfter,
         periodsPerDay: periodsPerDay,
       });
       await newTimetable.save();
       allTimetables.push(newTimetable);
 
-      const nullTeachers = dailySchedule.filter(
+      const nullTeachers = classData.schedule.filter(
         (e) => e.subject && !e.teacher && !e.isBreak
       ).length;
-      const totalSlots = dailySchedule.filter(
+      const totalSlots = classData.schedule.filter(
         (e) => e.subject && !e.isBreak
       ).length;
       const filledSlots = totalSlots - nullTeachers;
       console.log(`\n📊 ${className} Final Statistics:`);
       console.log(`  Total Slots: ${totalSlots}`);
-      console.log(
-        `  Filled: ${filledSlots} (${((filledSlots / totalSlots) * 100).toFixed(1)}%)`
-      );
+      console.log(`  Filled: ${filledSlots} (${((filledSlots / totalSlots) * 100).toFixed(1)}%)`);
       console.log(`  Unfilled: ${nullTeachers}`);
     }
 
+    // Verification
     console.log(`\n🔍 Verifying no cross-class teacher conflicts...`);
     let conflictFound = false;
     const slotMap = {};
@@ -841,9 +730,9 @@ exports.generateTimetable = async (req, res) => {
     for (let teacher of teachers) {
       const tId = teacher._id.toString();
       const hours = globalTeacherWeeklyHours[tId] || 0;
-      const utilization = ((hours / 17) * 100).toFixed(1);
+      const utilization = ((hours / 20) * 100).toFixed(1);
       const teacherName = teacher.user?.username || "Unknown";
-      console.log(`  ${teacherName}: ${hours}/17 hours (${utilization}%)`);
+      console.log(`  ${teacherName}: ${hours}/20 hours (${utilization}%)`);
     }
 
     const formattedTimetables = {};
