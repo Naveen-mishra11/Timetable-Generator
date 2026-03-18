@@ -47,7 +47,7 @@ exports.generateTimetable = async (req, res) => {
 
       const currentHours = globalTeacherWeeklyHours[tId] || 0;
       const requiredHours = isLab ? 2 : 1;
-      if (currentHours + requiredHours > 20) {
+      if (currentHours + requiredHours > 25) {
         return { available: false, reason: "hours_limit" };
       }
 
@@ -98,7 +98,8 @@ exports.generateTimetable = async (req, res) => {
       day,
       period,
       isLab = false,
-      className = null
+      className = null,
+      labDuration = 2
     ) => {
       const tId = teacher._id.toString();
       const availability = isTeacherAvailable(tId, day, period, isLab);
@@ -118,34 +119,33 @@ exports.generateTimetable = async (req, res) => {
       }
       
       if (isLab) {
-        if (!canTeachAtPeriod(teacher, day, period + 1, maxConsecutive)) {
-          return false;
+        // Check consecutive periods based on labDuration
+        for (let i = 1; i < labDuration; i++) {
+          if (!canTeachAtPeriod(teacher, day, period + i, maxConsecutive)) {
+            return false;
+          }
         }
       }
 
       return true;
     };
 
-    const assignTeacher = (teacher, day, period, isLab = false, className = null) => {
+    const assignTeacher = (teacher, day, period, isLab = false, className = null, labDuration = 2) => {
       const tId = teacher._id.toString();
-      const slotKey = `${day}_P${period}`;
-      const nextSlotKey = `${day}_P${period + 1}`;
       const dayKey = `${tId}_${day}`;
 
-      if (!globalTeacherAllocation[slotKey])
-        globalTeacherAllocation[slotKey] = [];
-      globalTeacherAllocation[slotKey].push(tId);
-
       if (!teacherDailyPeriods[dayKey]) teacherDailyPeriods[dayKey] = [];
-      teacherDailyPeriods[dayKey].push(period);
+      
+      // Assign all periods for the lab duration
+      for (let i = 0; i < (isLab ? labDuration : 1); i++) {
+        const slotKey = `${day}_P${period + i}`;
+        if (!globalTeacherAllocation[slotKey])
+          globalTeacherAllocation[slotKey] = [];
+        globalTeacherAllocation[slotKey].push(tId);
+        teacherDailyPeriods[dayKey].push(period + i);
+      }
 
       if (isLab) {
-        if (!globalTeacherAllocation[nextSlotKey])
-          globalTeacherAllocation[nextSlotKey] = [];
-        globalTeacherAllocation[nextSlotKey].push(tId);
-        
-        teacherDailyPeriods[dayKey].push(period + 1);
-        
         if (className) {
           const labFlagKey = `${tId}_${className}_${day}`;
           teacherDailyLabFlag[labFlagKey] = true;
@@ -157,32 +157,30 @@ exports.generateTimetable = async (req, res) => {
         }
       }
 
-      const requiredHours = isLab ? 2 : 1;
+      const requiredHours = isLab ? labDuration : 1;
       globalTeacherWeeklyHours[tId] =
         (globalTeacherWeeklyHours[tId] || 0) + requiredHours;
     };
 
-    const unassignTeacher = (teacher, day, period, isLab = false, className = null) => {
+    const unassignTeacher = (teacher, day, period, isLab = false, className = null, labDuration = 2) => {
       const tId = teacher._id.toString();
-      const slotKey = `${day}_P${period}`;
-      const nextSlotKey = `${day}_P${period + 1}`;
-
-      if (globalTeacherAllocation[slotKey]) {
-        globalTeacherAllocation[slotKey] = globalTeacherAllocation[slotKey].filter(id => id !== tId);
-      }
-      if (isLab && globalTeacherAllocation[nextSlotKey]) {
-        globalTeacherAllocation[nextSlotKey] = globalTeacherAllocation[nextSlotKey].filter(id => id !== tId);
-      }
-
       const dayKey = `${tId}_${day}`;
-      if (teacherDailyPeriods[dayKey]) {
-        teacherDailyPeriods[dayKey] = teacherDailyPeriods[dayKey].filter(p => p !== period);
-        if (isLab) {
-          teacherDailyPeriods[dayKey] = teacherDailyPeriods[dayKey].filter(p => p !== period + 1);
+
+      // Remove all periods for the lab duration
+      for (let i = 0; i < (isLab ? labDuration : 1); i++) {
+        const slotKey = `${day}_P${period + i}`;
+        if (globalTeacherAllocation[slotKey]) {
+          globalTeacherAllocation[slotKey] = globalTeacherAllocation[slotKey].filter(id => id !== tId);
         }
       }
 
-      const requiredHours = isLab ? 2 : 1;
+      if (teacherDailyPeriods[dayKey]) {
+        for (let i = 0; i < (isLab ? labDuration : 1); i++) {
+          teacherDailyPeriods[dayKey] = teacherDailyPeriods[dayKey].filter(p => p !== period + i);
+        }
+      }
+
+      const requiredHours = isLab ? labDuration : 1;
       globalTeacherWeeklyHours[tId] = Math.max(0, (globalTeacherWeeklyHours[tId] || 0) - requiredHours);
       
       if (isLab && className) {
@@ -229,7 +227,16 @@ exports.generateTimetable = async (req, res) => {
         
         const maxConsecutive = t.maxConsecutive || 2;
         if (!canTeachAtPeriod(t, day, period, maxConsecutive)) return false;
-        if (isLab && !canTeachAtPeriod(t, day, period + 1, maxConsecutive)) return false;
+        
+        // Check consecutive periods for labs based on labDuration
+        if (isLab) {
+          const labDuration = subject.labDuration || 2;
+          for (let i = 1; i < labDuration; i++) {
+            if (!canTeachAtPeriod(t, day, period + i, maxConsecutive)) {
+              return false;
+            }
+          }
+        }
         
         return true;
       });
@@ -357,17 +364,42 @@ exports.generateTimetable = async (req, res) => {
           if (labSubjects.length === 0) continue;
 
           const possiblePeriods = [];
-          for (let p = 1; p <= periodsPerDay - 1; p++) {
+          for (let p = 1; p <= periodsPerDay; p++) {
             if (lunchBreakAfter && p === lunchBreakAfter) continue;
-            // Check if this period is already occupied in this class
-            const occupied = classData.schedule.some(e => e.day === day && e.time === `P${p}`);
-            if (!occupied) possiblePeriods.push(p);
+            
+            // Check if this period and consecutive periods are available for the lab duration
+            const labSubject = labSubjects[0]; // Take first available lab
+            const labDuration = labSubject.labDuration || 2;
+            
+            let canFit = true;
+            for (let i = 0; i < labDuration; i++) {
+              const checkPeriod = p + i;
+              if (checkPeriod > periodsPerDay) {
+                canFit = false;
+                break;
+              }
+              if (lunchBreakAfter && checkPeriod === lunchBreakAfter) {
+                canFit = false;
+                break;
+              }
+              // Check if this period is already occupied in this class
+              const occupied = classData.schedule.some(e => e.day === day && e.time === `P${checkPeriod}`);
+              if (occupied) {
+                canFit = false;
+                break;
+              }
+            }
+            
+            if (canFit) {
+              possiblePeriods.push(p);
+            }
           }
 
           const shuffledPeriods = possiblePeriods.sort(() => Math.random() - 0.5);
 
           for (let p of shuffledPeriods) {
             const labSubject = labSubjects[0]; // Take first available lab
+            const labDuration = labSubject.labDuration || 2;
             const primaryTeacher = classData.subjectTeacherMap[labSubject._id.toString()];
             
             let selectedTeacher = null;
@@ -375,9 +407,17 @@ exports.generateTimetable = async (req, res) => {
             if (primaryTeacher) {
               const avail = isTeacherAvailable(primaryTeacher._id, day, p, true);
               const maxConsecutive = primaryTeacher.maxConsecutive || 2;
-              if (avail.available && 
-                  canTeachAtPeriod(primaryTeacher, day, p, maxConsecutive) && 
-                  canTeachAtPeriod(primaryTeacher, day, p + 1, maxConsecutive)) {
+              
+              // Check consecutive periods based on labDuration
+              let canAssign = avail.available;
+              for (let i = 1; i < labDuration; i++) {
+                if (!canTeachAtPeriod(primaryTeacher, day, p + i, maxConsecutive)) {
+                  canAssign = false;
+                  break;
+                }
+              }
+              
+              if (canAssign) {
                 selectedTeacher = primaryTeacher;
               }
             }
@@ -394,24 +434,21 @@ exports.generateTimetable = async (req, res) => {
             }
 
             if (selectedTeacher) {
-              assignTeacher(selectedTeacher, day, p, true, className);
+              assignTeacher(selectedTeacher, day, p, true, className, labDuration);
               classData.labsScheduledThisWeek.add(labSubject._id.toString());
 
               const labRoom = `Lab-${Math.floor(Math.random() * 20) + 1}`;
-              classData.schedule.push({
-                day,
-                time: `P${p}`,
-                subject: labSubject._id,
-                teacher: selectedTeacher._id,
-                room: labRoom,
-              });
-              classData.schedule.push({
-                day,
-                time: `P${p + 1}`,
-                subject: labSubject._id,
-                teacher: selectedTeacher._id,
-                room: labRoom,
-              });
+              
+              // Add schedule entries for all periods of the lab duration
+              for (let i = 0; i < labDuration; i++) {
+                classData.schedule.push({
+                  day,
+                  time: `P${p + i}`,
+                  subject: labSubject._id,
+                  teacher: selectedTeacher._id,
+                  room: labRoom,
+                });
+              }
 
               classData.labScheduleMap.push({
                 day,
@@ -730,9 +767,9 @@ exports.generateTimetable = async (req, res) => {
     for (let teacher of teachers) {
       const tId = teacher._id.toString();
       const hours = globalTeacherWeeklyHours[tId] || 0;
-      const utilization = ((hours / 20) * 100).toFixed(1);
+      const utilization = ((hours / 25) * 100).toFixed(1);
       const teacherName = teacher.user?.username || "Unknown";
-      console.log(`  ${teacherName}: ${hours}/20 hours (${utilization}%)`);
+      console.log(`  ${teacherName}: ${hours}/25 hours (${utilization}%)`);
     }
 
     const formattedTimetables = {};

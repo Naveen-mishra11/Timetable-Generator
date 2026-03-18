@@ -10,6 +10,7 @@ const AddSubject = () => {
     code: "",
     hoursPerWeek: 4,
     type: "theory", // default subject type
+    labDuration: 2, // default lab duration
   });
 
   const [message, setMessage] = useState("");
@@ -18,7 +19,7 @@ const AddSubject = () => {
     const { name, value } = e.target;
     setFormData({
       ...formData,
-      [name]: name === "hoursPerWeek" ? Number(value) : value,
+      [name]: name === "hoursPerWeek" || name === "labDuration" ? Number(value) : value,
     });
   };
 
@@ -33,7 +34,7 @@ const AddSubject = () => {
       });
 
       setMessage(res.data.message || "Subject added successfully!");
-      setFormData({ name: "", code: "", hoursPerWeek: 4, type: "theory" });
+      setFormData({ name: "", code: "", hoursPerWeek: 4, type: "theory", labDuration: 2 });
     } catch (err) {
       setMessage(err.response?.data?.error || "Something went wrong!");
     }
@@ -115,6 +116,29 @@ const AddSubject = () => {
                   <option value="lab">Lab</option>
                 </select>
               </div>
+
+              {/* Lab Duration (only shown for lab subjects) */}
+              {formData.type === "lab" && (
+                <div className="mb-3">
+                  <label htmlFor="labDuration" className="form-label">
+                    Lab Duration
+                  </label>
+                  <select
+                    className="form-select"
+                    id="labDuration"
+                    name="labDuration"
+                    value={formData.labDuration}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value={1}>1 Period</option>
+                    <option value={2}>2 Consecutive Periods</option>
+                  </select>
+                  <div className="form-text">
+                    Choose whether this lab takes 1 period or 2 consecutive periods
+                  </div>
+                </div>
+              )}
 
               <button type="submit" className="btn btn-primary w-100">
                 Add Subject
