@@ -318,7 +318,7 @@ ISC License - see LICENSE file for details
 
 ## 📞 Support
 
-For support, email your-email@example.com or open an issue in the repository.
+For support, email naveenmis2004@gmail.com or open an issue in the repository.
 
 ---
 
