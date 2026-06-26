@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 export default function ViewSubstitutions() {
   const [subs, setSubs] = useState([]);
@@ -21,7 +19,7 @@ export default function ViewSubstitutions() {
 
   const fetchSubs = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/leaves/substitutions`, {
+      const res = await api.get(`/leaves/substitutions`, {
         headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
       setSubs(res.data);
@@ -48,12 +46,9 @@ export default function ViewSubstitutions() {
   const fetchFreeTeachers = async (subId) => {
     try {
       setLoadingFreeBySubId((prev) => ({ ...prev, [subId]: true }));
-      const res = await axios.get(
-        `${SERVER_URL}/api/leaves/substitutions/${subId}/free-teachers`,
-        {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
-        }
-      );
+      const res = await api.get(`/leaves/substitutions/${subId}/free-teachers`, {
+        headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
+      });
       setFreeTeachersBySubId((prev) => ({ ...prev, [subId]: res.data.freeTeachers || [] }));
       // keep whatever selection we already have (it is synced in fetchSubs)
       setSelectedTeacherBySubId((prev) => ({ ...prev, [subId]: prev[subId] ?? "" }));
@@ -67,8 +62,8 @@ export default function ViewSubstitutions() {
   const assignTeacher = async (subId) => {
     try {
       const teacherId = selectedTeacherBySubId[subId] || null;
-      await axios.patch(
-        `${SERVER_URL}/api/leaves/substitutions/${subId}/assign`,
+      await api.patch(
+        `/leaves/substitutions/${subId}/assign`,
         { teacherId },
         {
           headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },

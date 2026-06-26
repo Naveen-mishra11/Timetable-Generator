@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 const daysOptions = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -33,7 +32,7 @@ const GenerateTimetable = () => {
 
   const fetchSubjects = async (token) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/subjects`, {
+      const res = await api.get(`/subjects`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSubjects(res.data);
@@ -44,7 +43,7 @@ const GenerateTimetable = () => {
 
   const fetchTeachers = async (token) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/teachers`, {
+      const res = await api.get(`/teachers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setTeachers(res.data);
@@ -62,15 +61,13 @@ const GenerateTimetable = () => {
         return;
       }
 
-      const res = await axios.post(
-        `${SERVER_URL}/api/timetable/generate`,
-        {
-          days,
-          periodsPerDay,
-          lunchAfter, // ⭐ Include lunch
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const res = await api.post(`/timetable/generate`, {
+        days,
+        periodsPerDay,
+        lunchAfter, // ⭐ Include lunch
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       setTimetable(res.data);
       setMessage("Timetable generated successfully!");

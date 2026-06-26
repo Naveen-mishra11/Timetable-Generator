@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
+
 
 export default function MyLeaves() {
   const [leaves, setLeaves] = useState([]);
@@ -15,7 +15,7 @@ export default function MyLeaves() {
 
   const fetchLeaves = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/leaves/my`, {
+      const res = await api.get(`/leaves/my`, {
         headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
       setLeaves(res.data);

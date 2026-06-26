@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 const AddClass = () => {
   const [className, setClassName] = useState("");
@@ -15,7 +14,7 @@ const AddClass = () => {
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const res = await axios.get(`${SERVER_URL}/api/subjects`);
+        const res = await api.get(`/subjects`);
         setSubjects(res.data || []);
       } catch (err) {
         console.error("Error fetching subjects:", err);
@@ -52,8 +51,8 @@ const AddClass = () => {
 
     try {
       const token = sessionStorage.getItem("token");
-      await axios.post(
-        `${SERVER_URL}/api/classes`,
+      await api.post(
+        `/classes`,
         {
           name: className,
           subjects: selectedSubjects,

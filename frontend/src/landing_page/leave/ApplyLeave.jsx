@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 const WEEKDAYS = [
   "Monday",
@@ -41,8 +40,8 @@ export default function ApplyLeave() {
 
     try {
       setLoading(true);
-      await axios.post(
-        `${SERVER_URL}/api/leaves`,
+      await api.post(
+        `/leaves`,
         {
           weekday,
           isFullDay,

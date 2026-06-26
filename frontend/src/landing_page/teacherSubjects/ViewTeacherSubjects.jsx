@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 const ViewTeacherSubjects = () => {
   const [subjects, setSubjects] = useState([]);
@@ -23,7 +22,7 @@ const ViewTeacherSubjects = () => {
         return;
       }
 
-      const res = await axios.get(`${SERVER_URL}/api/teachers/me`, {
+      const res = await api.get(`/teachers/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

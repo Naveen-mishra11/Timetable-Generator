@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 const ViewClasses = () => {
   const [classes, setClasses] = useState([]);
@@ -12,7 +11,7 @@ const ViewClasses = () => {
   // Fetch all classes
   const fetchClasses = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/classes`);
+      const res = await api.get(`/classes`);
       setClasses(res.data || []);
     } catch (err) {
       console.error("Error fetching classes:", err);
@@ -30,7 +29,7 @@ const ViewClasses = () => {
 
     try {
       const token = sessionStorage.getItem("token");
-      await axios.delete(`${SERVER_URL}/api/classes/${id}`, {
+      await api.delete(`/classes/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setMessage("Class deleted successfully!");

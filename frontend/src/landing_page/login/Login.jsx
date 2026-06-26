@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
-const serverUrl = import.meta.env.VITE_SERVER_URL;
+
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -25,7 +25,7 @@ const Login = () => {
     e.preventDefault();
     try {
       // 🔗 Update with your backend login API route
-      const res = await axios.post(`${serverUrl}/api/auth/login`, formData);
+      const res = await api.post(`/auth/login`, formData);
 
       // ✅ Save token in sessionStorage
       if (res.data.token) {

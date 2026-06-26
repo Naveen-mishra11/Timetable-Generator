@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 export default function PendingLeaves() {
   const [leaves, setLeaves] = useState([]);
@@ -16,7 +15,7 @@ export default function PendingLeaves() {
 
   const fetchPending = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/leaves/pending`, {
+      const res = await api.get(`/leaves/pending`, {
         headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
       setLeaves(res.data);
@@ -30,8 +29,8 @@ export default function PendingLeaves() {
   const approve = async (id) => {
     if (!window.confirm("Approve this leave and generate substitutions?") ) return;
     try {
-      const res = await axios.patch(
-        `${SERVER_URL}/api/leaves/${id}/approve`,
+      const res = await api.patch(
+        `/leaves/${id}/approve`,
         {},
         {
           headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
@@ -51,8 +50,8 @@ export default function PendingLeaves() {
   const reject = async (id) => {
     if (!window.confirm("Reject this leave?") ) return;
     try {
-      await axios.patch(
-        `${SERVER_URL}/api/leaves/${id}/reject`,
+      await api.patch(
+        `/leaves/${id}/reject`,
         {},
         {
           headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },

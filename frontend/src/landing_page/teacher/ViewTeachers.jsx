@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const serverUrl = import.meta.env.VITE_SERVER_URL;
 
 const ViewTeachers = () => {
   const [teachers, setTeachers] = useState([]);
@@ -15,7 +14,7 @@ const ViewTeachers = () => {
 
   const fetchTeachers = async () => {
     try {
-      const res = await axios.get(`${serverUrl}/api/teachers`);
+      const res = await api.get(`/teachers`);
       setTeachers(res.data);
       setLoading(false);
     } catch (err) {
@@ -27,7 +26,7 @@ const ViewTeachers = () => {
   const deleteTeacher = async (id) => {
     if (!window.confirm("Are you sure you want to delete this teacher?")) return;
     try {
-      await axios.delete(`${serverUrl}/api/teachers/${id}`);
+      await api.delete(`/teachers/${id}`);
       setTeachers((prev) => prev.filter((t) => t._id !== id));
     } catch (err) {
       console.error("Error deleting teacher:", err);

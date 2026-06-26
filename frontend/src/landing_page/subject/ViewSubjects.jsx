@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
-const serverUrl = import.meta.env.VITE_SERVER_URL;
 
 const ViewSubjects = () => {
   const [subjects, setSubjects] = useState([]);
@@ -15,7 +14,7 @@ const ViewSubjects = () => {
 
   const fetchSubjects = async () => {
     try {
-      const res = await axios.get(`${serverUrl}/api/subjects`);
+      const res = await api.get(`/subjects`);
       setSubjects(res.data);
     } catch (err) {
       setMessage(err.response?.data?.error || "Failed to load subjects");
@@ -25,7 +24,7 @@ const ViewSubjects = () => {
   const handleDelete = async (id) => {
     try {
       const token = sessionStorage.getItem("token");
-      await axios.delete(`${serverUrl}/api/subjects/${id}`, {
+      await api.delete(`/subjects/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setMessage("Subject deleted successfully!");

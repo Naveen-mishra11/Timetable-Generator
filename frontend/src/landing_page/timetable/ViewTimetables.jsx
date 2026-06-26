@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
+
 
 const ViewTimetables = () => {
   const [timetables, setTimetables] = useState([]);
@@ -26,7 +26,7 @@ const ViewTimetables = () => {
 
   const fetchTimetables = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/timetable/all`, {
+      const res = await api.get(`/timetable/all`, {
         headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
 
@@ -39,8 +39,8 @@ const ViewTimetables = () => {
   const fetchSubstitutionsForDate = async (dateStr) => {
     try {
       // dateStr = yyyy-mm-dd, backend expects ISO-ish; passing date string works.
-      const res = await axios.get(
-        `${SERVER_URL}/api/leaves/substitutions?date=${encodeURIComponent(dateStr)}`,
+      const res = await api.get(
+        `/leaves/substitutions?date=${encodeURIComponent(dateStr)}`,
         {
           headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
         }
@@ -65,7 +65,7 @@ const ViewTimetables = () => {
     if (!window.confirm("Delete all timetables?")) return;
 
     try {
-      await axios.delete(`${SERVER_URL}/api/timetable/delete-all`, {
+      await api.delete(`/timetable/delete-all`, {
         headers: { Authorization: `Bearer ${sessionStorage.getItem("token")}` },
       });
 

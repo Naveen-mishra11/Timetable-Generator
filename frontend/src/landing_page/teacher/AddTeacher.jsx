@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const serverUrl = import.meta.env.VITE_SERVER_URL;
 
 const AddTeacher = () => {
   const [teachers, setTeachers] = useState([]);
@@ -25,7 +24,7 @@ const AddTeacher = () => {
   /* ================= FETCH TEACHERS ================= */
   const fetchTeachers = async () => {
     try {
-      const res = await axios.get(`${serverUrl}/api/users/teachers`);
+      const res = await api.get(`/users/teachers`);
       setTeachers(res.data);
     } catch (err) {
       setMessage("❌ Failed to load teachers",err);
@@ -35,7 +34,7 @@ const AddTeacher = () => {
   /* ================= FETCH SUBJECTS ================= */
   const fetchSubjects = async () => {
     try {
-      const res = await axios.get(`${serverUrl}/api/subjects`);
+      const res = await api.get(`/subjects`);
       setSubjects(res.data);
     } catch (err) {
       setMessage("❌ Failed to load subjects",err);
@@ -70,8 +69,8 @@ const AddTeacher = () => {
     try {
       const token = sessionStorage.getItem("token");
 
-      await axios.post(
-        `${serverUrl}/api/teachers`,
+      await api.post(
+        `/teachers`,
         {
           user: selectedTeacher,        // 🔥 USER ID (Teacher)
           subjects: selectedSubjects,

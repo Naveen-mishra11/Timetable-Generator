@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../api/axios";
 import Navbar from "../Navbar";
 import Footer from "../Footer";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 
 // Define ALL periods (fixed)
 const ALL_PERIODS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7"];
@@ -28,8 +27,8 @@ const TeacherTimetable = () => {
 
   const fetchTeacherTimetable = async () => {
     try {
-      const res = await axios.get(
-        `${SERVER_URL}/api/teacher-timetable/teacher`,
+      const res = await api.get(
+        `/teacher-timetable/teacher`,
         {
           headers: {
             Authorization: `Bearer ${sessionStorage.getItem("token")}`,
