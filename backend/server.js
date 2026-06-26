@@ -1,7 +1,7 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
-const cors = require("cors")
+const cors = require("cors");
 const path = require("path");
 
 dotenv.config();
@@ -24,7 +24,6 @@ app.use("/api/teacher-timetable", require("./routes/teacherTimetableRoute"));
 // Leave management
 app.use("/api/leaves", require("./routes/leaveRoutes"));
 
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
@@ -32,7 +31,7 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../frontend/dist")));
 
-  app.get("*", (req, res) => {
+  app.use((req, res) => {
     res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
   });
 }
