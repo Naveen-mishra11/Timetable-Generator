@@ -21,8 +21,8 @@ const Footer = () => {
           {/* Contact / Socials */}
           <div className="col-md-4 mb-3">
             <h6 className="fw-bold">Connect With Us</h6>
-            <p className="small mb-1">📧 support@timetablegen.com</p>
-            <p className="small mb-3">📞 +91 XXXXXXXXXX</p>
+            <p className="small mb-1">📧 naveenmis2004@gmail.com</p>
+            <p className="small mb-3">📞 +91 9891838609</p>
             <div>
               <a
                 href="#"
